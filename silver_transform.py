@@ -102,3 +102,30 @@ def normalize_orders(df, rules_version):
         promo.alias("promo_code"),
         *metadata(df),
     )
+
+
+def normalize_order_items(df):
+    """order_items: ep quantity -> int, unit_price -> long, them line_amount."""
+    quantity = clean_string("quantity").try_cast("int")
+    unit_price = clean_string("unit_price").try_cast("long")
+    return df.select(
+        clean_string("order_id").alias("order_id"),
+        clean_string("product_id").alias("product_id"),
+        quantity.alias("quantity"),
+        unit_price.alias("unit_price"),
+        (quantity.cast("long") * unit_price).alias("line_amount"),
+        *metadata(df),
+    )
+
+
+def normalize(df, entity, rules_version):
+    """Goi ham chuan hoa ung voi thuc the."""
+    if entity == "products":
+        return normalize_products(df)
+    if entity == "customers":
+        return normalize_customers(df)
+    if entity == "orders":
+        return normalize_orders(df, rules_version)
+    if entity == "order_items":
+        return normalize_order_items(df)
+    raise ValueError(f"Thuc the khong hop le: {entity}")

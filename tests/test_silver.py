@@ -107,3 +107,27 @@ def test_normalize_orders_v2_still_rejects_garbage(spark):
     got = {r["order_id"]: r for r in st.normalize_orders(df, "v2").collect()}
     assert got["X"]["order_date"] is None and got["X"]["total_amount"] is None
     assert got["Y"]["total_amount"] == 1234567
+
+
+# ---------------------------------------------------------------- T31 order_items
+def test_normalize_items_line_amount(spark):
+    """Ep kieu va line_amount = quantity * unit_price; quantity sai -> NULL."""
+    df = spark.createDataFrame([("ORD-1001", "P-001", "3", "50000"),
+                                ("ORD-1005", "P-002", "-1", "75000"),
+                                ("ORD-1006", "P-003", "x", "1000")],
+                               "order_id string, product_id string, quantity string, unit_price string")
+    out = st.normalize_order_items(df)
+    assert out.columns[:5] == ["order_id", "product_id", "quantity", "unit_price", "line_amount"]
+    types = dict(out.dtypes)
+    assert types["quantity"] == "int" and types["unit_price"] == "bigint"
+    assert types["line_amount"] == "bigint"
+    rows = {r["order_id"]: r for r in out.collect()}
+    assert rows["ORD-1001"]["line_amount"] == 150000
+    assert rows["ORD-1005"]["quantity"] == -1 and rows["ORD-1005"]["line_amount"] == -75000
+    assert rows["ORD-1006"]["quantity"] is None and rows["ORD-1006"]["line_amount"] is None
+
+
+def test_normalize_items_dispatch(spark):
+    """normalize() chon dung ham theo thuc the."""
+    with pytest.raises(ValueError):
+        st.normalize(None, "unknown", "v1")

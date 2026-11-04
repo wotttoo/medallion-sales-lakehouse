@@ -193,7 +193,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_orders_v2` pass.
 
-- [ ] **T31. Chuẩn hóa order_items** (P3)
+- [x] **T31. Chuẩn hóa order_items** (P3)
   - Việc: ép kiểu, thêm `line_amount = quantity * unit_price`.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_items` pass.
