@@ -218,7 +218,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k quarantine` pass.
 
-- [ ] **T36. Luồng Silver cho một lô**
+- [x] **T36. Luồng Silver cho một lô**
   - Việc: nối các bước theo thứ tự `products → customers → orders → order_items`; lấy đúng dòng Bronze của lô chưa xử lý; trả thống kê `n_input`, `n_valid`, `n_quarantined`, `n_duplicates_removed`.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k batch_flow` pass.

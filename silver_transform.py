@@ -13,8 +13,9 @@ from delta.tables import DeltaTable
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
+from bronze_ingest import read_bronze
 from common.paths import table_uri
-from common.run_log import table_version
+from common.run_log import read_ingested_files, successful_batches, table_version
 from quality_rules import rules_for
 
 # cot metadata tu Bronze, giu lai qua cac buoc
@@ -327,3 +328,74 @@ def write_quarantine(spark, cfg, entity, quarantined, batch_id):
 def read_quarantine(spark, cfg, entity):
     """Doc bang quarantine cua thuc the."""
     return spark.read.format("delta").load(table_uri(quarantine_table_name(entity), cfg))
+
+
+# ---------------------------------------------------------------------------
+# Luong Silver cho mot lo
+# ---------------------------------------------------------------------------
+ENTITY_ORDER = ["products", "customers", "orders", "order_items"]
+
+
+def pending_batches(spark, cfg):
+    """Cac _batch_id da co trong Bronze nhung Silver chua xu ly thanh cong (tang dan)."""
+    all_batches = {r["_batch_id"] for r in
+                   read_ingested_files(spark, cfg).select("_batch_id").distinct().collect()}
+    return sorted(all_batches - successful_batches(spark, cfg, "silver"))
+
+
+def add_reference_flags(spark, cfg, df):
+    """order_items: them _product_exists, _order_exists tu Silver hien tai."""
+    df = add_exists_flag(df, read_silver(spark, cfg, "products"), "product_id", "_product_exists")
+    return add_exists_flag(df, read_silver(spark, cfg, "orders"), "order_id", "_order_exists")
+
+
+def process_entity(spark, cfg, entity, batch_id):
+    """Chuan hoa -> quy tac -> tach nhanh -> loai trung -> MERGE + quarantine cho mot thuc the.
+
+    Tra ve (thong ke, so canh bao, phien ban Delta da ghi, tap hop le da loai trung).
+    Tap hop le dang duoc cache: nguoi goi unpersist khi dung xong.
+    """
+    bronze = read_bronze(spark, cfg, entity, batch_id)
+    df = normalize(attach_raw(bronze, entity), entity, cfg["rules_version"])
+    if entity == "order_items":
+        df = add_reference_flags(spark, cfg, df)
+    checked, warns = apply_rules(df, entity)
+    checked = checked.cache()
+    valid, quarantined = split_valid_quarantine(checked)
+    deduped = deduplicate(valid, entity).cache()
+
+    n_input = checked.count()
+    n_quarantined = quarantined.count()
+    n_valid_rows = n_input - n_quarantined
+    n_valid = deduped.count()
+    stats = {"n_input": n_input, "n_valid": n_valid, "n_quarantined": n_quarantined,
+             "n_duplicates_removed": n_valid_rows - n_valid}
+
+    versions = {
+        silver_table_name(entity): merge_into_silver(spark, cfg, entity, deduped),
+        quarantine_table_name(entity): write_quarantine(spark, cfg, entity, quarantined, batch_id),
+    }
+    checked.unpersist()
+    return stats, warns, versions, deduped
+
+
+def process_batch(spark, cfg, batch_id):
+    """Xu ly mot lo Bronze qua Silver theo thu tu products -> customers -> orders -> order_items.
+
+    Tra ve dict: _batch_id, entities (thong ke tung thuc the), n_warn_by_rule,
+    delta_versions_written, input_files, tong n_*.
+    """
+    result = {"_batch_id": batch_id, "entities": {}, "n_warn_by_rule": {},
+              "delta_versions_written": {}}
+    for entity in ENTITY_ORDER:
+        stats, warns, versions, deduped = process_entity(spark, cfg, entity, batch_id)
+        deduped.unpersist()
+        result["entities"][entity] = stats
+        result["n_warn_by_rule"].update(warns)
+        result["delta_versions_written"].update(versions)
+    for col in ("n_input", "n_valid", "n_quarantined", "n_duplicates_removed"):
+        result[col] = sum(s[col] for s in result["entities"].values())
+    result["input_files"] = sorted(
+        r["file_name"] for r in read_ingested_files(spark, cfg)
+        .where(F.col("_batch_id") == batch_id).select("file_name").collect())
+    return result

@@ -329,3 +329,42 @@ def test_quarantine_rerun_batch_replaces(spark, tmp_cfg):
     q = st.read_quarantine(spark, tmp_cfg, "orders")
     counts = {r["_batch_id"]: r["count"] for r in q.groupBy("_batch_id").count().collect()}
     assert counts == {"b-0001": 2, "b-0002": 2}
+
+
+# ---------------------------------------------------------------- T36 luong mot lo
+@pytest.fixture(scope="module")
+def generated(tmp_path_factory):
+    """Sinh du lieu vao thu muc tam; tra ve (thu muc landing, answer key)."""
+    import json
+    import generate_data
+    out = tmp_path_factory.mktemp("silver_data")
+    generate_data.main(["--output-dir", str(out)])
+    key = json.loads((out / "answer_key" / "answer_key.json").read_text(encoding="utf-8"))
+    return out / "landing", key
+
+
+def make_cfg(landing, lakehouse, version):
+    """Config tro toi landing sinh san va lakehouse tam."""
+    from common.config import load_config
+    return load_config(landing_dir=landing, lakehouse_dir=lakehouse, rules_version=version)
+
+
+def test_batch_flow_day1_matches_answer_key(spark, generated, tmp_path):
+    """Lo ngay 1: thong ke tung thuc the khop answer key v1; dang thuc bao toan dung."""
+    import bronze_ingest
+    landing, key = generated
+    cfg = make_cfg(landing, tmp_path / "lh", "v1")
+    bronze_ingest.ingest_date(spark, cfg, "2026-10-19")
+    assert st.pending_batches(spark, cfg) == ["b-0001"]
+    result = st.process_batch(spark, cfg, "b-0001")
+    expected = key["days"]["2026-10-19"]["outcomes"]["v1"]["entities"]
+    assert result["entities"] == expected
+    for s in result["entities"].values():
+        assert s["n_input"] == s["n_valid"] + s["n_quarantined"] + s["n_duplicates_removed"]
+    assert result["n_warn_by_rule"]["phone_not_null"] == \
+        key["days"]["2026-10-19"]["outcomes"]["v1"]["n_warn_by_rule"]["phone_not_null"]
+    assert "web_2026-10-19.csv" in result["input_files"]
+    assert set(result["delta_versions_written"]) >= {"silver.orders", "quarantine.orders"}
+    counts = key["days"]["2026-10-19"]["outcomes"]["v1"]["silver_counts"]
+    for entity in st.ENTITY_ORDER:
+        assert st.read_silver(spark, cfg, entity).count() == counts[entity]
