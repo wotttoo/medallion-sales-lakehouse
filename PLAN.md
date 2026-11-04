@@ -129,7 +129,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k key_outcomes` pass.
 
-- [ ] **T19. Answer key: doanh thu và ngưỡng cách ly**
+- [x] **T19. Answer key: doanh thu và ngưỡng cách ly**
   - Việc: ghi doanh thu `order_date × category`, `order_date × channel` theo trạng thái lũy kế từng ngày; kiểm tra tỷ lệ cách ly v1 dưới ngưỡng cho cả orders và order_items (gồm `order_exists`).
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py` pass toàn bộ.

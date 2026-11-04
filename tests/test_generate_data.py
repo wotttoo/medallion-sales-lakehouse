@@ -625,3 +625,62 @@ def test_key_outcomes_items_quarantine(cfg, answer_key):
             assert sum("product_exists" in x["failed_rules"] for x in q) == e["C3_unknown_product"]
         assert len(day["outcomes"]["v2"]["quarantined"]["order_items"]) < \
             len(day["outcomes"]["v1"]["quarantined"]["order_items"])
+
+
+# ---------------------------------------------------------------- T19 doanh thu va nguong
+def test_revenue_two_dimensions_agree(cfg, answer_key):
+    """Tong doanh thu theo category = theo channel cho moi order_date."""
+    for d in cfg["dates"]:
+        for v in ["v1", "v2"]:
+            out = answer_key["days"][d]["outcomes"][v]
+            for dim in ["revenue_by_category", "revenue_by_channel"]:
+                per_date = {}
+                for row in out[dim]:
+                    per_date[row["order_date"]] = per_date.get(row["order_date"], 0) + row["revenue"]
+                    assert row["revenue"] > 0 and row["n_orders"] > 0
+                assert per_date == out["revenue_by_date"]
+
+
+def test_revenue_late_arrivals_change_previous_day(cfg, answer_key):
+    """Sau khi xu ly ngay N+1, doanh thu cua order_date = N thay doi (T2)."""
+    for v in ["v1", "v2"]:
+        for prev, d in zip(cfg["dates"], cfg["dates"][1:]):
+            before = answer_key["days"][prev]["outcomes"][v]["revenue_by_date"][prev]
+            after = answer_key["days"][d]["outcomes"][v]["revenue_by_date"][prev]
+            assert after > before
+            # ngay xu ly khong co doanh thu cho order_date tuong lai
+            assert max(answer_key["days"][prev]["outcomes"][v]["revenue_by_date"]) == prev
+
+
+def test_revenue_rule_change_summary(cfg, answer_key):
+    """v2 cach ly it hon dung bang so don chi dinh A1/A2 va doanh thu tang."""
+    rc = answer_key["rule_change"]
+    assert rc["quarantine_decrease"] == rc["orders_only_A1_A2"] > 0
+    assert rc["revenue_increase"] == rc["v2"]["total_revenue"] - rc["v1"]["total_revenue"] > 0
+
+
+def test_revenue_quarantine_rate_below_threshold(cfg, answer_key):
+    """Ty le cach ly v1 (orders va order_items, gom order_exists) duoi nguong."""
+    threshold = cfg["quarantine_rate_threshold"]
+    for d in cfg["dates"]:
+        rates = answer_key["days"][d]["outcomes"]["v1"]["quarantine_rate"]
+        assert rates["orders"] < threshold
+        assert rates["order_items"] < threshold
+        q = answer_key["days"][d]["outcomes"]["v1"]["quarantined"]["order_items"]
+        assert any("order_exists" in x["failed_rules"] for x in q)
+
+
+def test_revenue_threshold_violation_raises(cfg, dataset):
+    """Nguong qua thap thi generator bao loi thay vi sinh du lieu lam fail thi nghiem 2."""
+    strict = dict(cfg, quarantine_rate_threshold=0.01)
+    with pytest.raises(ValueError):
+        gd.build_answer_key(strict, gd.build_dataset(strict))
+
+
+def test_revenue_top_customers_ranked(cfg, answer_key):
+    """top_customers sap theo doanh thu giam dan, rank bat dau tu 1."""
+    top = answer_key["days"][cfg["dates"][-1]]["outcomes"]["v2"]["top_customers"]
+    assert top[0]["rank"] == 1
+    revenues = [t["total_revenue"] for t in top]
+    assert revenues == sorted(revenues, reverse=True)
+    assert sum(revenues) == answer_key["days"][cfg["dates"][-1]]["outcomes"]["v2"]["total_revenue"]

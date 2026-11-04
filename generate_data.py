@@ -850,6 +850,45 @@ class ExpectedLakehouse:
         return sum(v["quantity"] * v["unit_price"]
                    for (oid, _pid), v in self.state["order_items"].items() if oid == order_id)
 
+    def revenue(self):
+        """Doanh thu tu trang thai Silver hien tai (sau moi lo da xu ly).
+
+        Doanh thu = tong line_amount cua dong thuoc don status != cancelled,
+        gan theo order_date. Tra ve theo category, theo channel va top khach.
+        """
+        products, orders = self.state["products"], self.state["orders"]
+        by_cat, by_ch, by_cust = {}, {}, {}
+        for (oid, pid), item in self.state["order_items"].items():
+            order = orders[(oid,)]
+            if order["status"] == "cancelled":
+                continue
+            amount = item["quantity"] * item["unit_price"]
+            for groups, k in [(by_cat, (order["order_date"], products[(pid,)]["category"])),
+                              (by_ch, (order["order_date"], order["channel"])),
+                              (by_cust, order["customer_id"])]:
+                g = groups.setdefault(k, [0, set()])
+                g[0] += amount
+                g[1].add(oid)
+        revenue_by_category = [{"order_date": d, "category": c, "revenue": v[0], "n_orders": len(v[1])}
+                               for (d, c), v in sorted(by_cat.items())]
+        revenue_by_channel = [{"order_date": d, "channel": c, "revenue": v[0], "n_orders": len(v[1])}
+                              for (d, c), v in sorted(by_ch.items())]
+        ranked = sorted(by_cust.items(), key=lambda kv: (-kv[1][0], kv[0]))
+        top_customers, prev, rank = [], None, 0
+        for i, (cid, v) in enumerate(ranked, start=1):
+            if v[0] != prev:
+                rank, prev = i, v[0]
+            top_customers.append({"customer_id": cid, "total_revenue": v[0],
+                                  "n_orders": len(v[1]), "rank": rank})
+        daily = {}
+        for row in revenue_by_category:
+            daily[row["order_date"]] = daily.get(row["order_date"], 0) + row["revenue"]
+        return {"revenue_by_category": revenue_by_category,
+                "revenue_by_channel": revenue_by_channel,
+                "revenue_by_date": dict(sorted(daily.items())),
+                "total_revenue": sum(daily.values()),
+                "top_customers": top_customers}
+
     def process_day(self, date, day):
         """Xu ly mot lo (mot ngay) theo thu tu products -> customers -> orders -> order_items."""
         result = {"entities": {}, "quarantined": {}, "n_warn_by_rule": {}}
@@ -874,6 +913,7 @@ class ExpectedLakehouse:
         result["n_warn_by_rule"]["total_amount_matches_items"] = sum(
             1 for (oid,) in order_keys if orders[(oid,)]["total_amount"] != self.items_total(oid))
         result["silver_counts"] = {entity: len(self.state[entity]) for entity in ENTITIES}
+        result.update(self.revenue())
         result["quarantine_rate"] = {
             entity: (s["n_quarantined"] / s["n_input"] if s["n_input"] else 0.0)
             for entity, s in result["entities"].items()}
@@ -892,7 +932,46 @@ def build_answer_key(cfg, dataset):
             "error_counts": error_counts(day),
             "outcomes": {v: m.process_day(date, day) for v, m in models.items()},
         }
+    key["rule_change"] = rule_change_summary(cfg, key)
+    check_quarantine_rates(cfg, key)
     return key
+
+
+def rule_change_summary(cfg, key):
+    """So sanh v1 va v2 sau khi xu ly het cac ngay (dung cho thi nghiem 2)."""
+    last = cfg["dates"][-1]
+    summary = {}
+    for v in ("v1", "v2"):
+        q_orders = sum(key["days"][d]["outcomes"][v]["entities"]["orders"]["n_quarantined"]
+                       for d in cfg["dates"])
+        q_items = sum(key["days"][d]["outcomes"][v]["entities"]["order_items"]["n_quarantined"]
+                      for d in cfg["dates"])
+        summary[v] = {"n_quarantined_orders": q_orders, "n_quarantined_order_items": q_items,
+                      "total_revenue": key["days"][last]["outcomes"][v]["total_revenue"]}
+    # dong don bi cach ly o v1 chi vi A1/A2 (khong dinh C1) -> hop le o v2
+    only_a = 0
+    for d in cfg["dates"]:
+        for q in key["days"][d]["outcomes"]["v1"]["quarantined"]["orders"]:
+            if "customer_id_not_null" not in q["failed_rules"]:
+                only_a += 1
+    summary["orders_only_A1_A2"] = only_a
+    summary["quarantine_decrease"] = summary["v1"]["n_quarantined_orders"] - summary["v2"]["n_quarantined_orders"]
+    summary["revenue_increase"] = summary["v2"]["total_revenue"] - summary["v1"]["total_revenue"]
+    return summary
+
+
+def check_quarantine_rates(cfg, key):
+    """Bao loi neu ty le cach ly cua lo (v1 hoac v2) cham nguong config.
+
+    Dam bao thi nghiem 2 (chay v1) khong bi pipeline fail o check quarantine_rate.
+    """
+    threshold = cfg["quarantine_rate_threshold"]
+    for d in cfg["dates"]:
+        for v in ("v1", "v2"):
+            for entity, rate in key["days"][d]["outcomes"][v]["quarantine_rate"].items():
+                if rate >= threshold:
+                    raise ValueError(f"Ty le cach ly {entity} ngay {d} ({v}) = {rate:.3f} "
+                                     f">= nguong {threshold}; giam ty le loi trong config")
 
 
 def write_answer_key(key, path):
