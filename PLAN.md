@@ -270,7 +270,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k revenue_by_channel` pass.
 
-- [ ] **T46. Bảng top_customers** (P4)
+- [x] **T46. Bảng top_customers** (P4)
   - Việc: `gold.top_customers` trên toàn bộ dữ liệu, có `rank`.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k top_customers` pass.

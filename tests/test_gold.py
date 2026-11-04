@@ -171,3 +171,36 @@ def test_revenue_by_channel_day1(spark, day1, generated):
         key["days"]["2026-10-19"]["outcomes"]["v2"]["revenue_by_channel"]
     total = lambda t: gb.read_gold(spark, day1, t).agg(gb.F.sum("revenue")).collect()[0][0]
     assert total("daily_revenue_by_channel") == total("daily_revenue_by_category")
+
+
+# ---------------------------------------------------------------- T46 top_customers
+def top_rows(spark, cfg):
+    """Doc top_customers thanh list dict, sap theo rank roi customer_id."""
+    return sorted((r.asDict() for r in gb.read_gold(spark, cfg, "top_customers").collect()),
+                  key=lambda x: (x["rank"], x["customer_id"]))
+
+
+def test_top_customers_matches_answer_key(spark, two_days, generated):
+    """top_customers sau ngay 2 khop answer key: doanh thu, so don, hang."""
+    _, key = generated
+    result = gb.build_gold(spark, two_days, "b-0002")
+    assert "gold.top_customers" in result["delta_versions_written"]
+    expected = sorted(key["days"]["2026-10-20"]["outcomes"]["v2"]["top_customers"],
+                      key=lambda x: (x["rank"], x["customer_id"]))
+    assert top_rows(spark, two_days) == expected
+    assert gb.read_gold(spark, two_days, "top_customers").columns == \
+        ["customer_id", "total_revenue", "n_orders", "rank"]
+
+
+def test_top_customers_rank_ties(spark, tmp_path):
+    """Doanh thu bang nhau thi cung hang; don huy khong tinh."""
+    cfg = load_config(lakehouse_dir=tmp_path / "lh")
+    rows = [("O1", "P", "C-1", dt.date(2026, 10, 19), "web", "delivered", 1, 100, 100),
+            ("O2", "P", "C-2", dt.date(2026, 10, 19), "web", "pending", 1, 100, 100),
+            ("O3", "P", "C-3", dt.date(2026, 10, 19), "web", "delivered", 1, 50, 50),
+            ("O4", "P", "C-3", dt.date(2026, 10, 19), "web", "cancelled", 1, 500, 500)]
+    spark.createDataFrame(rows, ", ".join(f"{c} {t}" for c, t in zip(gb.FACT_COLUMNS, [
+        "string", "string", "string", "date", "string", "string", "int", "bigint", "bigint"]))) \
+        .write.format("delta").save(gb.gold_path(cfg, "fact_sales"))
+    got = {r["customer_id"]: (r["total_revenue"], r["rank"]) for r in gb.build_top_customers(spark, cfg).collect()}
+    assert got == {"C-1": (100, 1), "C-2": (100, 1), "C-3": (50, 3)}

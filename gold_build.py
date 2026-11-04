@@ -8,6 +8,7 @@ cho moi order_date bi anh huong boi lo.
 """
 
 from delta.tables import DeltaTable
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 from bronze_ingest import read_bronze
@@ -182,3 +183,41 @@ def write_revenue_by_channel(spark, cfg, dates):
     """Ghi de KPI theo channel cho cac ngay bi anh huong."""
     return replace_dates(spark, cfg, "daily_revenue_by_channel",
                          build_revenue_by_channel(spark, cfg), dates)
+
+
+# ---------------------------------------------------------------------------
+# top_customers tren toan bo du lieu
+# ---------------------------------------------------------------------------
+def build_top_customers(spark, cfg):
+    """customer_id, total_revenue, n_orders, rank (rank 1 = doanh thu cao nhat; bang nhau cung hang)."""
+    totals = revenue_lines(spark, cfg).groupBy("customer_id").agg(
+        F.sum("line_amount").alias("total_revenue"),
+        F.countDistinct("order_id").alias("n_orders"))
+    window = Window.orderBy(F.col("total_revenue").desc())
+    return totals.withColumn("rank", F.rank().over(window)).select(
+        "customer_id", "total_revenue", "n_orders", "rank")
+
+
+def write_top_customers(spark, cfg):
+    """Ghi de toan bang top_customers."""
+    return overwrite_table(spark, cfg, "top_customers", build_top_customers(spark, cfg))
+
+
+# ---------------------------------------------------------------------------
+# Dung Gold cho mot lo
+# ---------------------------------------------------------------------------
+def build_gold(spark, cfg, batch_id=None, dates=None):
+    """Cap nhat Gold sau mot lo Silver.
+
+    dates: ngay can ghi lai; mac dinh = affected_dates cua lo. Tra ve dict
+    dates (list) va delta_versions_written.
+    """
+    if dates is None:
+        dates = affected_dates(spark, cfg, batch_id)
+    versions = write_dims(spark, cfg)
+    if dates:
+        versions["gold.fact_sales"] = write_fact_sales(spark, cfg, dates)
+        versions["gold.daily_revenue_by_category"] = write_revenue_by_category(spark, cfg, dates)
+        versions["gold.daily_revenue_by_channel"] = write_revenue_by_channel(spark, cfg, dates)
+    versions["gold.top_customers"] = write_top_customers(spark, cfg)
+    return {"dates": dates, "delta_versions_written": versions}
