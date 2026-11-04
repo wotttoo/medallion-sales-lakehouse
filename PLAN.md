@@ -255,7 +255,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k affected_dates` pass.
 
-- [ ] **T43. Bảng fact_sales** (P4)
+- [x] **T43. Bảng fact_sales** (P4)
   - Việc: dựng đúng grain và cột SPEC 7.4, ghi bằng `replaceWhere` theo các ngày bị ảnh hưởng.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k fact_sales` pass.

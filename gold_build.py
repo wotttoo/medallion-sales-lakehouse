@@ -7,6 +7,7 @@ Bang dim ghi de toan bang; fact va KPI theo ngay ghi de theo phan vung (replaceW
 cho moi order_date bi anh huong boi lo.
 """
 
+from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
 from bronze_ingest import read_bronze
@@ -93,3 +94,48 @@ def all_order_dates(spark, cfg):
     """Moi order_date dang co trong silver.orders (dung khi dung lai Gold toan bo)."""
     rows = read_silver(spark, cfg, "orders").select("order_date").distinct().collect()
     return sorted(r["order_date"] for r in rows if r["order_date"] is not None)
+
+
+# ---------------------------------------------------------------------------
+# Ghi de theo phan vung order_date
+# ---------------------------------------------------------------------------
+def date_predicate(dates):
+    """Bieu thuc replaceWhere cho danh sach ngay."""
+    return "order_date IN (" + ", ".join(f"DATE'{d.isoformat()}'" for d in dates) + ")"
+
+
+def replace_dates(spark, cfg, table, df, dates):
+    """Ghi de dung cac phan vung order_date trong `dates`; tra ve phien ban Delta.
+
+    Ngay khong con dong nao (vd moi don bi huy) cung bi xoa sach trong bang.
+    """
+    path = gold_path(cfg, table)
+    # BEGIN SOLUTION
+    df = df.where(F.col("order_date").isin(dates))
+    if not DeltaTable.isDeltaTable(spark, path):
+        df.write.format("delta").partitionBy("order_date").save(path)
+    else:
+        (df.write.format("delta").mode("overwrite")
+           .option("replaceWhere", date_predicate(dates)).save(path))
+    # END SOLUTION
+    return table_version(spark, path)
+
+
+# ---------------------------------------------------------------------------
+# fact_sales: grain = mot dong san pham trong mot don
+# ---------------------------------------------------------------------------
+FACT_COLUMNS = ["order_id", "product_id", "customer_id", "order_date", "channel", "status",
+                "quantity", "unit_price", "line_amount"]
+
+
+def build_fact_sales(spark, cfg):
+    """Noi silver.order_items voi silver.orders, dung khoa tu nhien."""
+    items = read_silver(spark, cfg, "order_items")
+    orders = read_silver(spark, cfg, "orders").select(
+        "order_id", "customer_id", "order_date", "channel", "status")
+    return items.join(orders, "order_id").select(FACT_COLUMNS)
+
+
+def write_fact_sales(spark, cfg, dates):
+    """Ghi de fact_sales cho cac ngay bi anh huong."""
+    return replace_dates(spark, cfg, "fact_sales", build_fact_sales(spark, cfg), dates)

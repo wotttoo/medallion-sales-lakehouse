@@ -81,3 +81,38 @@ def test_affected_dates_include_late_and_updates(spark, two_days):
     assert gb.affected_dates(spark, two_days, "b-0002") == [dt.date(2026, 10, 19),
                                                            dt.date(2026, 10, 20)]
     assert gb.all_order_dates(spark, two_days) == [dt.date(2026, 10, 19), dt.date(2026, 10, 20)]
+
+
+# ---------------------------------------------------------------- T43 fact_sales
+def test_fact_sales_grain_and_columns(spark, day1):
+    """Mot dong moi san pham trong don; dung cot SPEC; phan vung theo order_date."""
+    gb.write_fact_sales(spark, day1, [dt.date(2026, 10, 19)])
+    fact = gb.read_gold(spark, day1, "fact_sales")
+    assert fact.columns == gb.FACT_COLUMNS
+    assert fact.count() == st.read_silver(spark, day1, "order_items").count()
+    assert fact.select("order_id", "product_id").distinct().count() == fact.count()
+    from delta.tables import DeltaTable
+    detail = DeltaTable.forPath(spark, gb.gold_path(day1, "fact_sales")).detail().collect()[0]
+    assert detail["partitionColumns"] == ["order_date"]
+
+
+def test_fact_sales_replace_is_idempotent(spark, day1):
+    """Ghi lai cung ngay khong nhan doi dong."""
+    n = gb.read_gold(spark, day1, "fact_sales").count()
+    gb.write_fact_sales(spark, day1, [dt.date(2026, 10, 19)])
+    assert gb.read_gold(spark, day1, "fact_sales").count() == n
+
+
+def test_fact_sales_old_date_rewritten(spark, two_days):
+    """Lo ngay 2 ghi de ca ngay 1: dong den muon va trang thai T1 moi xuat hien."""
+    d1, d2 = dt.date(2026, 10, 19), dt.date(2026, 10, 20)
+    gb.write_fact_sales(spark, two_days, gb.affected_dates(spark, two_days, "b-0001"))
+    gb.write_fact_sales(spark, two_days, gb.affected_dates(spark, two_days, "b-0002"))
+    fact = gb.read_gold(spark, two_days, "fact_sales")
+    assert fact.count() == st.read_silver(spark, two_days, "order_items").count()
+    silver_status = {r["order_id"]: r["status"] for r in
+                     st.read_silver(spark, two_days, "orders").where(f"order_date = '{d1}'").collect()}
+    fact_status = {r["order_id"]: r["status"] for r in
+                   fact.where(f"order_date = '{d1}'").select("order_id", "status").distinct().collect()}
+    assert all(silver_status[o] == s for o, s in fact_status.items())
+    assert fact.where(f"order_date = '{d2}'").count() > 0
