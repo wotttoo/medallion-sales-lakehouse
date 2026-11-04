@@ -27,6 +27,8 @@ def get_spark(app_name="sales_lakehouse"):
         .config("spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.sql.shuffle.partitions", "4")
+        # du lieu nho: it partition cho log Delta de moi thao tac nhanh hon
+        .config("spark.databricks.delta.snapshotPartitions", "2")
         .config("spark.jars.excludes", JARS_EXCLUDES)
         .config("spark.ui.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")

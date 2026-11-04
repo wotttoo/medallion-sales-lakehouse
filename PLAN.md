@@ -238,7 +238,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `run_pipeline.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k rebuild` pass (phiên bản Bronze không đổi).
 
-- [ ] **T40. Kiểm chứng Silver theo answer key**
+- [x] **T40. Kiểm chứng Silver theo answer key**
   - Việc: so số hợp lệ, cách ly, trùng cho v1 và v2; kiểm đẳng thức bảo toàn; chạy nhiều lần để xác nhận tie-breaker ổn định.
   - File: `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py` pass toàn bộ.

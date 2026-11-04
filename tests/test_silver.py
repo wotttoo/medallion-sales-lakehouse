@@ -442,3 +442,94 @@ def test_rebuild_drop_only_derived_layers(tmp_path):
     removed = st.drop_derived_layers(load_config(lakehouse_dir=lh))
     assert removed == ["silver", "quarantine", "gold"]
     assert sorted(p.name for p in lh.iterdir()) == ["_meta", "bronze"]
+
+
+# ---------------------------------------------------------------- T40 doi chieu answer key
+DATES = ["2026-10-19", "2026-10-20", "2026-10-21"]
+
+
+def silver_snapshot(spark, cfg):
+    """Noi dung Silver + quarantine (sap xep) de so sanh giua cac lan chay."""
+    snap = {}
+    for entity in st.ENTITY_ORDER:
+        snap[entity] = sorted(tuple(r) for r in st.read_silver(spark, cfg, entity).collect())
+        q = st.read_quarantine(spark, cfg, entity).drop("_quarantined_at")
+        snap["q_" + entity] = sorted(tuple(r) for r in q.collect())
+    return snap
+
+
+@pytest.fixture(scope="module")
+def full_runs(spark, generated, tmp_path_factory):
+    """Chay Silver ca 3 ngay voi v1, rebuild v2, rebuild v2 lan nua.
+
+    Tra ve (cfg_v2, ket qua tung lo theo version, snapshot v1, hai snapshot v2).
+    """
+    import bronze_ingest
+    landing, _ = generated
+    lh = tmp_path_factory.mktemp("lh_full")
+    results = {}
+    cfg = make_cfg(landing, lh, "v1")
+    for d in DATES:
+        bronze_ingest.ingest_date(spark, cfg, d)
+    results["v1"] = [st.process_batch(spark, cfg, b) for b in st.all_batches(spark, cfg)]
+    snap_v1 = silver_snapshot(spark, cfg)
+    cfg = make_cfg(landing, lh, "v2")
+    snaps = []
+    for _ in range(2):
+        st.drop_derived_layers(cfg)
+        results["v2"] = [st.process_batch(spark, cfg, b) for b in st.all_batches(spark, cfg)]
+        snaps.append(silver_snapshot(spark, cfg))
+    return cfg, results, snap_v1, snaps
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_silver_counts_match_answer_key(full_runs, generated, version):
+    """So hop le / cach ly / trung moi thuc the moi ngay khop answer key."""
+    _, key = generated
+    _, results, _, _ = full_runs
+    for d, result in zip(DATES, results[version]):
+        expected = key["days"][d]["outcomes"][version]
+        assert result["entities"] == expected["entities"], (d, version)
+        assert result["n_warn_by_rule"] == expected["n_warn_by_rule"], (d, version)
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_silver_conservation(full_runs, version):
+    """n_input = n_valid + n_quarantined + n_duplicates_removed cho moi thuc the, moi lo."""
+    _, results, _, _ = full_runs
+    for result in results[version]:
+        for s in result["entities"].values():
+            assert s["n_input"] == s["n_valid"] + s["n_quarantined"] + s["n_duplicates_removed"]
+
+
+def test_silver_quarantine_lists_match_answer_key(full_runs, generated):
+    """Danh sach don cach ly (order_id, tep, quy tac) khop answer key; ORD-1002 dung ly do."""
+    _, key = generated
+    _, _, snap_v1, snaps = full_runs
+    for version, snap in [("v1", snap_v1), ("v2", snaps[-1])]:
+        cols = st.RAW_COLUMNS["orders"] + ["_ingest_time", "_source_file", "_batch_id", "_failed_rules"]
+        got = sorted((r[cols.index("order_id")], r[cols.index("_source_file")],
+                      r[cols.index("_failed_rules")]) for r in snap["q_orders"])
+        expected = sorted((q["order_id"], q["source_file"], q["failed_rules"])
+                          for d in DATES for q in key["days"][d]["outcomes"][version]["quarantined"]["orders"])
+        assert got == expected, version
+
+
+def test_silver_final_counts_and_showcase(spark, full_runs, generated):
+    """So dong Silver sau 3 ngay khop answer key; ORD-1001 dung nhu reading."""
+    import datetime as dt
+    _, key = generated
+    cfg, _, _, _ = full_runs
+    for entity, n in key["days"][DATES[-1]]["outcomes"]["v2"]["silver_counts"].items():
+        assert st.read_silver(spark, cfg, entity).count() == n
+    rows = st.read_silver(spark, cfg, "orders").where("order_id = 'ORD-1001'").collect()
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["order_date"] == dt.date(2026, 10, 19) and r["total_amount"] == 150000
+    assert r["status"] == "delivered" and r["customer_id"] == "C-017"
+
+
+def test_silver_tie_breaker_stable_across_runs(full_runs):
+    """Hai lan rebuild v2 cho Silver va quarantine giong het (tie-breaker on dinh)."""
+    _, _, _, snaps = full_runs
+    assert snaps[0] == snaps[1]
