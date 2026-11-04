@@ -157,8 +157,11 @@ def run_rebuild(spark, cfg):
     removed = drop_derived_layers(cfg)
     batches = all_batches(spark, cfg)
     print(f"[rebuild] xoa {removed}; xu ly lai {len(batches)} lo voi {cfg['rules_version']}")
-    run_silver(spark, cfg, None, batches=batches)
-    run_gold(spark, cfg, None, batches=batches)
+    # moi lo: Silver roi Gold, giong luong chay thuong, de check doi soat Gold-Silver
+    # sau tung lo van dung (Silver khong "chay truoc" Gold nhieu lo)
+    for batch_id in batches:
+        run_silver(spark, cfg, None, batches=[batch_id])
+        run_gold(spark, cfg, None, batches=[batch_id])
 
 
 def run_date(spark, cfg, processing_date, layer):
