@@ -2,12 +2,16 @@
 
 import csv
 import json
+import os
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 import generate_data as gd
-from common.config import load_config
+from common.config import REPO_ROOT, load_config
 
 
 @pytest.fixture(scope="module")
@@ -444,3 +448,31 @@ def test_landing_files_row_counts(cfg, dataset, landing):
         for entity in ["order_items", "customers", "products"]:
             n = len((landing / d / f"{entity}_{d}.csv").read_text(encoding="utf-8").splitlines()) - 1
             assert n == len(dataset[d][entity])
+
+
+# ---------------------------------------------------------------- T16 tat dinh
+def run_generator(out_dir, hash_seed):
+    """Chay generate_data.py trong tien trinh rieng voi PYTHONHASHSEED khac nhau."""
+    env = dict(os.environ, PYTHONHASHSEED=str(hash_seed))
+    subprocess.run([sys.executable, str(REPO_ROOT / "generate_data.py"),
+                    "--output-dir", str(out_dir)], check=True, env=env,
+                   cwd=str(out_dir), capture_output=True)
+
+
+def tree_bytes(root):
+    """dict duong dan tuong doi -> noi dung bytes cua moi tep."""
+    return {p.relative_to(root).as_posix(): p.read_bytes()
+            for p in sorted(Path(root).rglob("*")) if p.is_file()}
+
+
+def test_deterministic_byte_identical(tmp_path):
+    """Hai lan chay (khac PYTHONHASHSEED, khac thu muc) cho tep giong het tung byte."""
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    run_generator(a, 1)
+    run_generator(b, 999)
+    files_a, files_b = tree_bytes(a), tree_bytes(b)
+    assert files_a and list(files_a) == list(files_b)
+    for rel in files_a:
+        assert files_a[rel] == files_b[rel], rel

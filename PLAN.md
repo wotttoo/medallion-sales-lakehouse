@@ -114,7 +114,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `python generate_data.py` tạo đủ tệp 3 ngày và `pytest tests/test_generate_data.py -k landing_files` pass.
 
-- [ ] **T16. Kiểm tra tất định**
+- [x] **T16. Kiểm tra tất định**
   - Việc: bảo đảm thứ tự ghi và định dạng ổn định qua các lần chạy.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k deterministic` pass (hai lần chạy giống hệt từng byte).
