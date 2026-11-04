@@ -6,6 +6,8 @@ Check sau layer:
 - gold:   revenue_reconciliation, no_orphan_keys
 """
 
+from common.run_log import read_ingested_files
+
 
 class QualityCheckError(Exception):
     """Mot check muc tap du lieu that bai (pipeline phai fail)."""
@@ -49,3 +51,33 @@ def check_quarantine_rate(entity_stats, threshold):
     if broken:
         raise QualityCheckError(f"quarantine_rate >= {threshold}: {broken}")
     return {"quarantine_rate": rates}
+
+
+# ---------------------------------------------------------------------------
+# volume_check
+# ---------------------------------------------------------------------------
+def daily_order_counts(spark, cfg):
+    """So dong orders da nap theo ngay tep (tu _meta/ingested_files)."""
+    rows = (read_ingested_files(spark, cfg).where("entity = 'orders'")
+            .groupBy("file_date").sum("row_count").collect())
+    return {r["file_date"]: int(r[1]) for r in rows}
+
+
+def check_volume_counts(processing_date, counts, threshold):
+    """So don ngay xu ly >= threshold x trung binh cac ngay truoc; bo qua ngay dau."""
+    previous = [n for d, n in counts.items() if d < processing_date]
+    if not previous:
+        return {"volume_check": "skipped (ngay dau)"}
+    current = counts.get(processing_date, 0)
+    average = sum(previous) / len(previous)
+    if current < threshold * average:
+        raise QualityCheckError(
+            f"volume_check that bai: {processing_date} co {current} don < "
+            f"{threshold} x trung binh {average:.1f}")
+    return {"volume_check": {"current": current, "previous_average": round(average, 1)}}
+
+
+def check_volume(spark, cfg, processing_date):
+    """volume_check cho ngay xu ly, doc so dong tu ingested_files."""
+    return check_volume_counts(processing_date, daily_order_counts(spark, cfg),
+                               cfg["volume_drop_threshold"])

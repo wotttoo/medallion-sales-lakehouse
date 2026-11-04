@@ -290,7 +290,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k quarantine_rate` pass.
 
-- [ ] **T50. Check volume_check** (P4)
+- [x] **T50. Check volume_check** (P4)
   - Việc: so số đơn với `volume_drop_threshold` × trung bình các ngày trước; bỏ qua ngày đầu.
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k volume` pass.
