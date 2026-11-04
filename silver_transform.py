@@ -53,7 +53,9 @@ def normalize_customers(df):
 
 
 ISO_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+DMY_DATE_PATTERN = r"^\d{2}/\d{2}/\d{4}$"
 PLAIN_NUMBER_PATTERN = r"^\d+$"
+VND_STRING_PATTERN = r"^\d{1,3}(\.\d{3})*\s*(đ|₫|vnd|VND)$"
 TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
 
 
@@ -63,15 +65,27 @@ def parse_date(col, pattern, fmt):
 
 
 def parse_order_date(col_name, rules_version):
-    """order_date -> date. v1: chi YYYY-MM-DD."""
+    """order_date -> date. v1: chi YYYY-MM-DD; v2: them DD/MM/YYYY."""
     c = clean_string(col_name)
-    return parse_date(c, ISO_DATE_PATTERN, "yyyy-MM-dd")
+    # BEGIN SOLUTION
+    iso = parse_date(c, ISO_DATE_PATTERN, "yyyy-MM-dd")
+    if rules_version == "v1":
+        return iso
+    return F.coalesce(iso, parse_date(c, DMY_DATE_PATTERN, "dd/MM/yyyy"))
+    # END SOLUTION
 
 
 def parse_amount(col_name, rules_version):
-    """total_amount -> long. v1: chi so thuan."""
+    """total_amount -> long. v1: chi so thuan; v2: them chuoi '150.000đ'."""
     c = clean_string(col_name)
-    return F.when(c.rlike(PLAIN_NUMBER_PATTERN), c.try_cast("long"))
+    # BEGIN SOLUTION
+    plain = F.when(c.rlike(PLAIN_NUMBER_PATTERN), c.try_cast("long"))
+    if rules_version == "v1":
+        return plain
+    digits = F.regexp_replace(c, r"[^0-9]", "")
+    vnd = F.when(c.rlike(VND_STRING_PATTERN), digits.try_cast("long"))
+    return F.coalesce(plain, vnd)
+    # END SOLUTION
 
 
 def normalize_orders(df, rules_version):

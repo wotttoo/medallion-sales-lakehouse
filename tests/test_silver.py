@@ -82,3 +82,28 @@ def test_normalize_orders_v1_values(spark):
     r = rows["ORD-1004"]
     assert r["order_date"] is None and r["total_amount"] is None
     assert r["status"] == "pending" and r["updated_at"] is None
+
+
+# ---------------------------------------------------------------- T30 orders v2
+def test_normalize_orders_v2_parses_reading_formats(spark):
+    """v2: '19/10/2026' -> 2026-10-19; '150.000đ' -> 150000."""
+    import datetime as dt
+    rows = normalized(spark, "v2")
+    r = rows["ORD-1002"]
+    assert r["order_date"] == dt.date(2026, 10, 19)
+    assert r["total_amount"] == 150000
+    assert r["customer_id"] is None          # v2 van khong sua duoc customer_id rong
+    assert rows["ORD-1001"]["total_amount"] == 150000
+
+
+def test_normalize_orders_v2_still_rejects_garbage(spark):
+    """v2 khong chap nhan ngay khong ton tai hay so tien sai dang."""
+    rows = normalized(spark, "v2")
+    assert rows["ORD-1004"]["order_date"] is None
+    assert rows["ORD-1004"]["total_amount"] is None
+    df = spark.createDataFrame(
+        [("X", "C", "31/02/2026", "1.50đ", "pending", "web", "2026-10-19 00:00:00"),
+         ("Y", "C", "19/10/2026", "1.234.567đ", "pending", "web", "2026-10-19 00:00:00")], ORDER_COLS)
+    got = {r["order_id"]: r for r in st.normalize_orders(df, "v2").collect()}
+    assert got["X"]["order_date"] is None and got["X"]["total_amount"] is None
+    assert got["Y"]["total_amount"] == 1234567

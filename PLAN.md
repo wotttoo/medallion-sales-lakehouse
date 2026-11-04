@@ -188,7 +188,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_orders_v1` pass.
 
-- [ ] **T30. Chuẩn hóa orders theo v2** (P3)
+- [x] **T30. Chuẩn hóa orders theo v2** (P3)
   - Việc: parse thêm `DD/MM/YYYY` và chuỗi `"150.000đ"`.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_orders_v2` pass.
