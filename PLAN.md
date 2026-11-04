@@ -317,7 +317,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `tests/test_against_answer_key.py`
   - Xong khi: `pytest tests/test_against_answer_key.py` pass.
 
-- [ ] **T55. Thí nghiệm 1: lũy đẳng** (P5)
+- [x] **T55. Thí nghiệm 1: lũy đẳng** (P5)
   - Việc: chạy ngày đầu hai lần; assert theo SPEC mục 8.
   - File: `experiments/exp1_idempotency.py`
   - Xong khi: `python experiments/exp1_idempotency.py` trả exit code 0.
