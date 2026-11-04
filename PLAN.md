@@ -56,7 +56,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
   - File: `common/paths.py`, `tests/test_paths.py`
   - Xong khi: `pytest tests/test_paths.py` pass.
 
-- [ ] **T05. SparkSession có Delta** (P1)
+- [x] **T05. SparkSession có Delta** (P1)
   - Việc: `common/spark.py` với `configure_spark_with_delta_pip`, 2 cấu hình Delta, `spark.sql.shuffle.partitions=4`, log WARN, `spark.jars.excludes` theo `CLAUDE.md`; fixture `spark` mức session trong `tests/conftest.py`.
   - File: `common/spark.py`, `tests/conftest.py`, `tests/test_spark.py`
   - Xong khi: `pytest tests/test_spark.py` pass (ghi rồi đọc lại một bảng Delta tạm).
