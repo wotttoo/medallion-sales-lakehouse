@@ -146,7 +146,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `common/run_log.py`, `tests/test_run_log.py`
   - Xong khi: `pytest tests/test_run_log.py -k run_log` pass.
 
-- [ ] **T22. Tìm và kiểm tra tệp** (P2)
+- [x] **T22. Tìm và kiểm tra tệp** (P2)
   - Việc: liệt kê tệp của một ngày theo thứ tự cố định (orders: web → app → partner); kiểm tra tồn tại, không rỗng, parse được; lỗi thì nêu rõ tên tệp.
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k file_checks` pass.
