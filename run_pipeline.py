@@ -12,10 +12,11 @@ import traceback
 
 from bronze_ingest import ingest_date
 from common.config import load_config
-from common.run_log import utc_now, write_run_log
+from common.run_log import read_ingested_files, utc_now, write_run_log
 from common.spark import get_spark
+from silver_transform import pending_batches, process_batch
 
-LAYERS = ["bronze"]
+LAYERS = ["bronze", "silver"]
 
 
 class PipelineError(Exception):
@@ -71,12 +72,43 @@ def run_bronze(spark, cfg, processing_date):
     return logged_run(spark, cfg, "bronze", processing_date, work)
 
 
+def batch_date(spark, cfg, batch_id):
+    """Ngay cua tep nguon trong lo (lay tu ingested_files)."""
+    rows = (read_ingested_files(spark, cfg).where(f"_batch_id = '{batch_id}'")
+            .select("file_date").distinct().collect())
+    return rows[0]["file_date"] if rows else None
+
+
+def run_silver(spark, cfg, processing_date):
+    """Xu ly moi lo Bronze chua qua Silver, moi lo mot dong run log."""
+    batches = pending_batches(spark, cfg)
+    if not batches:
+        print(f"[silver] {processing_date}: khong co lo moi")
+        return [logged_run(spark, cfg, "silver", processing_date,
+                           lambda: {"input_files": [], "n_input": 0})]
+    records = []
+    for batch_id in batches:
+        def work(batch_id=batch_id):
+            result = process_batch(spark, cfg, batch_id)
+            print(f"[silver] lo {batch_id} ({cfg['rules_version']}): " + ", ".join(
+                f"{e} {s['n_valid']} hop le/{s['n_quarantined']} cach ly/"
+                f"{s['n_duplicates_removed']} trung" for e, s in result["entities"].items()))
+            return {k: result[k] for k in ("_batch_id", "input_files", "n_input", "n_valid",
+                                            "n_quarantined", "n_duplicates_removed",
+                                            "n_warn_by_rule", "delta_versions_written")}
+        records.append(logged_run(spark, cfg, "silver",
+                                  batch_date(spark, cfg, batch_id) or processing_date, work))
+    return records
+
+
 def run_date(spark, cfg, processing_date, layer):
     """Chay cac layer duoc chon cho mot ngay."""
     if processing_date not in cfg["dates"]:
         raise PipelineError(f"Ngay {processing_date} khong co trong config.dates")
     if layer in ("bronze", "all"):
         run_bronze(spark, cfg, processing_date)
+    if layer in ("silver", "all"):
+        run_silver(spark, cfg, processing_date)
 
 
 def main(argv=None, spark=None):

@@ -228,7 +228,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k amount_match` pass.
 
-- [ ] **T38. Nối Silver vào CLI**
+- [x] **T38. Nối Silver vào CLI**
   - Việc: thêm `--layer silver` và `--rules-version`, ghi run log.
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer silver` trả exit code 0.
