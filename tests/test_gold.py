@@ -116,3 +116,40 @@ def test_fact_sales_old_date_rewritten(spark, two_days):
                    fact.where(f"order_date = '{d1}'").select("order_id", "status").distinct().collect()}
     assert all(silver_status[o] == s for o, s in fact_status.items())
     assert fact.where(f"order_date = '{d2}'").count() > 0
+
+
+# ---------------------------------------------------------------- T44 KPI theo category
+def kpi_rows(spark, cfg, table, dim):
+    """Doc bang KPI thanh list dict giong dinh dang answer key."""
+    return sorted(({"order_date": r["order_date"].isoformat(), dim: r[dim],
+                    "revenue": r["revenue"], "n_orders": r["n_orders"]}
+                   for r in gb.read_gold(spark, cfg, table).collect()),
+                  key=lambda x: (x["order_date"], x[dim]))
+
+
+def build_until(spark, cfg, batches):
+    """Dung Gold (dims, fact, KPI co san) cho lan luot cac lo."""
+    for b in batches:
+        dates = gb.affected_dates(spark, cfg, b)
+        gb.write_dims(spark, cfg)
+        gb.write_fact_sales(spark, cfg, dates)
+        gb.write_revenue_by_category(spark, cfg, dates)
+        if hasattr(gb, "write_revenue_by_channel"):
+            gb.write_revenue_by_channel(spark, cfg, dates)
+
+
+def test_revenue_by_category_day1(spark, day1, generated):
+    """Doanh thu order_date x category sau ngay 1 khop answer key (v2)."""
+    _, key = generated
+    build_until(spark, day1, ["b-0001"])
+    assert kpi_rows(spark, day1, "daily_revenue_by_category", "category") == \
+        key["days"]["2026-10-19"]["outcomes"]["v2"]["revenue_by_category"]
+
+
+def test_revenue_by_category_after_late_arrivals(spark, two_days, generated):
+    """Sau ngay 2, doanh thu ngay 1 thay doi do don den muon va van khop answer key."""
+    _, key = generated
+    build_until(spark, two_days, ["b-0001", "b-0002"])
+    got = kpi_rows(spark, two_days, "daily_revenue_by_category", "category")
+    assert got == key["days"]["2026-10-20"]["outcomes"]["v2"]["revenue_by_category"]
+    assert got != key["days"]["2026-10-19"]["outcomes"]["v2"]["revenue_by_category"]

@@ -139,3 +139,34 @@ def build_fact_sales(spark, cfg):
 def write_fact_sales(spark, cfg, dates):
     """Ghi de fact_sales cho cac ngay bi anh huong."""
     return replace_dates(spark, cfg, "fact_sales", build_fact_sales(spark, cfg), dates)
+
+
+# ---------------------------------------------------------------------------
+# KPI doanh thu theo ngay
+# ---------------------------------------------------------------------------
+def revenue_lines(spark, cfg):
+    """Dong fact tinh vao doanh thu: don khong bi huy."""
+    # BEGIN SOLUTION
+    return read_gold(spark, cfg, "fact_sales").where(F.col("status") != "cancelled")
+    # END SOLUTION
+
+
+def aggregate_revenue(lines, *group_cols):
+    """revenue = tong line_amount; n_orders = so don khac nhau."""
+    return lines.groupBy(*group_cols).agg(
+        F.sum("line_amount").alias("revenue"),
+        F.countDistinct("order_id").alias("n_orders"))
+
+
+def build_revenue_by_category(spark, cfg):
+    """daily_revenue_by_category: order_date, category, revenue, n_orders."""
+    products = read_gold(spark, cfg, "dim_product").select("product_id", "category")
+    lines = revenue_lines(spark, cfg).join(products, "product_id")
+    return aggregate_revenue(lines, "order_date", "category").select(
+        "order_date", "category", "revenue", "n_orders")
+
+
+def write_revenue_by_category(spark, cfg, dates):
+    """Ghi de KPI theo category cho cac ngay bi anh huong."""
+    return replace_dates(spark, cfg, "daily_revenue_by_category",
+                         build_revenue_by_category(spark, cfg), dates)

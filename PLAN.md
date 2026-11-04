@@ -260,7 +260,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k fact_sales` pass.
 
-- [ ] **T44. KPI theo category** (P4)
+- [x] **T44. KPI theo category** (P4)
   - Việc: `gold.daily_revenue_by_category`, loại đơn `cancelled`, ghi `replaceWhere`.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k revenue_by_category` pass.
