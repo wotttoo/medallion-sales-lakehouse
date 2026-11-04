@@ -173,7 +173,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
 
 ## M4. Silver và quarantine
 
-- [ ] **T27. Khai báo quy tắc** (P3)
+- [x] **T27. Khai báo quy tắc** (P3)
   - Việc: khai báo 9 quy tắc bắt buộc ở SPEC 7.3 dạng dữ liệu, đúng tên và `action`. Thứ tự orders phải cho ra `customer_id_not_null; order_date_valid_format; total_amount_numeric`.
   - File: `quality_rules.py`, `tests/test_quality_rules.py`
   - Xong khi: `pytest tests/test_quality_rules.py` pass.
