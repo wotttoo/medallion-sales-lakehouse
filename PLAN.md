@@ -104,7 +104,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_w` pass.
 
-- [ ] **T14. Cài lỗi nhóm T**
+- [x] **T14. Cài lỗi nhóm T**
   - Việc: cài T1 (gửi lại ngày N+1, status tiến lên), T2 (đến muộn), T3 (`promo_code` ở tệp partner ngày 3).
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_t` pass.

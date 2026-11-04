@@ -538,6 +538,60 @@ def inject_w2(cfg, date, day):
 
 
 # ---------------------------------------------------------------------------
+# Nhom T: theo thoi gian
+# ---------------------------------------------------------------------------
+NEXT_STATUS = {"pending": "shipping", "shipping": "delivered"}
+PROMO_CODES = ["SALE10", "FREESHIP", "VIP20"]
+
+
+def inject_t2(cfg, prev_date, date, day):
+    """T2: mot phan don moi cua ngay N+1 co order_date = N (den muon)."""
+    rng = make_rng(cfg["seed"], f"group_t2:{date}")
+    code = "T2_late_arriving"
+    pool = random_error_pool(day["orders"])
+    for r in pick_rows(rng, pool, count_for(cfg["error_rates"][code], n_new_orders(day))):
+        r.values["order_date"] = prev_date
+        r.values["updated_at"] = random_time(rng, prev_date, start_hour=21, end_hour=24)
+        r.clean.update(order_date=r.values["order_date"], updated_at=r.values["updated_at"])
+        r.add_error(code)
+        r.tags.add("late")
+
+
+def inject_t1(cfg, prev_date, date, dataset):
+    """T1: gui lai mot phan don sach ngay N trong tep ngay N+1, status tien len,
+    updated_at moi hon, cung kenh."""
+    rng = make_rng(cfg["seed"], f"group_t1:{date}")
+    code = "T1_status_update_resend"
+    prev = dataset[prev_date]
+    bad_item_orders = {r.values["order_id"] for r in prev["order_items"] if r.errors}
+    pool = [r for r in random_error_pool(prev["orders"])
+            if not r.errors and r.values["status"] in NEXT_STATUS
+            and r.values["order_id"] not in bad_item_orders]
+    resends = []
+    for src in pick_rows(rng, pool, count_for(cfg["error_rates"][code], n_new_orders(prev))):
+        row = LandingRow("orders", dict(src.values), channel=src.channel)
+        row.values["status"] = NEXT_STATUS[src.values["status"]]
+        row.values["updated_at"] = random_time(rng, date)
+        row.clean = dict(row.values)
+        row.add_error(code)
+        row.tags.add("resend")
+        resends.append(row)
+    dataset[date]["orders"].extend(resends)
+
+
+def inject_t3(cfg, dataset):
+    """T3: tep partner ngay 3 co them cot promo_code."""
+    if not cfg["enable_schema_evolution_day3"] or len(cfg["dates"]) < 3:
+        return
+    date = cfg["dates"][2]
+    rng = make_rng(cfg["seed"], f"group_t3:{date}")
+    for r in dataset[date]["orders"]:
+        if r.channel == "partner":
+            r.values["promo_code"] = rng.choice(PROMO_CODES) if rng.random() < 0.3 else None
+            r.add_error("T3_schema_evolution")
+
+
+# ---------------------------------------------------------------------------
 # Lap bo du lieu (dong landing + loi) cho moi ngay
 # ---------------------------------------------------------------------------
 def build_dataset(cfg):
@@ -567,12 +621,20 @@ def build_dataset(cfg):
         dataset[date] = day
     apply_showcase(dataset[first_date]["orders"])
 
-    for date in cfg["dates"]:
+    dates = cfg["dates"]
+    # T2 truoc tien: doi order_date truoc khi sao chep don cho nhom B
+    for prev_date, date in zip(dates, dates[1:]):
+        inject_t2(cfg, prev_date, date, dataset[date])
+    for date in dates:
         inject_group_a(cfg, date, dataset[date])
         inject_group_b(cfg, date, dataset[date])
         inject_group_c(cfg, date, dataset[date])
         inject_w2(cfg, date, dataset[date])
     inject_w1(cfg, dataset)
+    # T1 sau cung: chi gui lai don hoan toan sach cua ngay truoc
+    for prev_date, date in zip(dates, dates[1:]):
+        inject_t1(cfg, prev_date, date, dataset)
+    inject_t3(cfg, dataset)
     return dataset
 
 

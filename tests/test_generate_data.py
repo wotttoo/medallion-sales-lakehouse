@@ -257,7 +257,7 @@ def test_group_b_sources_have_no_other_errors(cfg, dataset):
     for date in cfg["dates"]:
         for r in dataset[date]["orders"]:
             if "b_source" in r.tags:
-                assert r.errors == []
+                assert [e for e in r.errors if e != "T3_schema_evolution"] == []
 
 
 # ---------------------------------------------------------------- T12 nhom C
@@ -332,5 +332,47 @@ def test_group_w_other_orders_match_items(cfg, dataset):
             c = i.clean
             clean_total[c["order_id"]] = clean_total.get(c["order_id"], 0) + c["quantity"] * c["unit_price"]
         for r in dataset[date]["orders"]:
-            if "W2_amount_mismatch" not in r.errors:
+            if "W2_amount_mismatch" not in r.errors and "resend" not in r.tags:
                 assert r.values["total_amount"] == clean_total[r.values["order_id"]]
+
+
+# ---------------------------------------------------------------- T14 nhom T
+def test_group_t_t1_resend(cfg, dataset):
+    """T1: 10% don ngay N gui lai ngay N+1, cung kenh, updated_at moi hon, status tien len."""
+    n = cfg["volume"]["orders_per_day"]
+    nxt = {"pending": "shipping", "shipping": "delivered"}
+    for prev, date in zip(cfg["dates"], cfg["dates"][1:]):
+        rows = error_rows(dataset, date, "orders", "T1_status_update_resend")
+        assert len(rows) == expected_count(cfg, "T1_status_update_resend", n)
+        for r in rows:
+            orig = rows_of(dataset, prev, "orders", r.values["order_id"])
+            assert len(orig) == 1 and orig[0].errors == []
+            o = orig[0]
+            assert r.channel == o.channel
+            assert r.values["updated_at"] > o.values["updated_at"]
+            assert r.values["updated_at"].startswith(date)
+            assert r.values["status"] == nxt[o.values["status"]]
+            assert r.values["order_date"] == o.values["order_date"]
+
+
+def test_group_t_t2_late(cfg, dataset):
+    """T2: 3% don moi ngay N+1 co order_date = N; ngay dau khong co."""
+    n = cfg["volume"]["orders_per_day"]
+    assert not error_rows(dataset, cfg["dates"][0], "orders", "T2_late_arriving")
+    for prev, date in zip(cfg["dates"], cfg["dates"][1:]):
+        rows = error_rows(dataset, date, "orders", "T2_late_arriving")
+        assert len(rows) == expected_count(cfg, "T2_late_arriving", n)
+        assert all(r.values["order_date"] == prev for r in rows)
+        # don den muon van co dong san pham trong tep ngay N+1
+        item_orders = {i.values["order_id"] for i in dataset[date]["order_items"]}
+        assert all(r.values["order_id"] in item_orders for r in rows)
+
+
+def test_group_t_t3_promo_code(cfg, dataset):
+    """T3: chi tep partner ngay 3 co cot promo_code."""
+    day3 = cfg["dates"][2]
+    for date in cfg["dates"]:
+        for r in dataset[date]["orders"]:
+            has = "promo_code" in r.values
+            assert has == (date == day3 and r.channel == "partner")
+    assert any(r.values.get("promo_code") for r in dataset[day3]["orders"])
