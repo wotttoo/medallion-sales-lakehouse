@@ -223,7 +223,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k batch_flow` pass.
 
-- [ ] **T37. Quy tắc total_amount_matches_items**
+- [x] **T37. Quy tắc total_amount_matches_items**
   - Việc: kiểm tra sau khi có order_items, chỉ đếm vào run log.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k amount_match` pass.

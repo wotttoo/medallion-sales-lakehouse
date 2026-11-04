@@ -368,3 +368,32 @@ def test_batch_flow_day1_matches_answer_key(spark, generated, tmp_path):
     counts = key["days"]["2026-10-19"]["outcomes"]["v1"]["silver_counts"]
     for entity in st.ENTITY_ORDER:
         assert st.read_silver(spark, cfg, entity).count() == counts[entity]
+
+
+# ---------------------------------------------------------------- T37 total_amount_matches_items
+def test_amount_match_counts_only_warn(spark, tmp_cfg):
+    """Don lech tong tien chi bi dem canh bao, khong bi cach ly."""
+    st.merge_into_silver(spark, tmp_cfg, "orders", order_batch(spark, [
+        ("ORD-1", "pending", "2026-10-19 10:00:00"), ("ORD-2", "pending", "2026-10-19 10:00:00"),
+        ("ORD-3", "pending", "2026-10-19 10:00:00")]))
+    import datetime as dt
+    t = dt.datetime(2026, 10, 19, 12)
+    items = spark.createDataFrame(
+        [("ORD-1", "P-1", 1, 10, 10, t, "i.csv", "b-0001"),     # khop tong 10
+         ("ORD-2", "P-1", 2, 10, 20, t, "i.csv", "b-0001")],    # lech: 20 != 10
+        "order_id string, product_id string, quantity int, unit_price long, line_amount long, "
+        "_ingest_time timestamp, _source_file string, _batch_id string")
+    st.merge_into_silver(spark, tmp_cfg, "order_items", items)
+    batch = spark.createDataFrame([("ORD-1",), ("ORD-2",), ("ORD-3",)], "order_id string")
+    # ORD-3 khong co dong nao -> tong 0 -> lech
+    assert st.check_amount_matches_items(spark, tmp_cfg, batch) == {"total_amount_matches_items": 2}
+
+
+def test_amount_match_day1_matches_answer_key(spark, generated, tmp_path):
+    """So canh bao total_amount_matches_items ngay 1 (v2) khop answer key."""
+    import bronze_ingest
+    landing, key = generated
+    cfg = make_cfg(landing, tmp_path / "lh", "v2")
+    bronze_ingest.ingest_date(spark, cfg, "2026-10-19")
+    result = st.process_batch(spark, cfg, "b-0001")
+    assert result["n_warn_by_rule"] == key["days"]["2026-10-19"]["outcomes"]["v2"]["n_warn_by_rule"]

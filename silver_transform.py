@@ -379,6 +379,22 @@ def process_entity(spark, cfg, entity, batch_id):
     return stats, warns, versions, deduped
 
 
+def check_amount_matches_items(spark, cfg, batch_orders):
+    """Quy tac warn total_amount_matches_items: chay sau khi order_items da vao Silver.
+
+    batch_orders: DataFrame co cot order_id (cac don hop le cua lo).
+    So total_amount trong silver.orders voi tong line_amount trong silver.order_items.
+    """
+    items_total = (read_silver(spark, cfg, "order_items").groupBy("order_id")
+                   .agg(F.sum("line_amount").alias("_items_total")))
+    orders = (read_silver(spark, cfg, "orders")
+              .join(batch_orders.select("order_id").distinct(), "order_id")
+              .join(items_total, "order_id", "left")
+              .withColumn("_items_total", F.coalesce(F.col("_items_total"), F.lit(0))))
+    _, warns = apply_rules(orders, "orders", stage="after_items")
+    return warns
+
+
 def process_batch(spark, cfg, batch_id):
     """Xu ly mot lo Bronze qua Silver theo thu tu products -> customers -> orders -> order_items.
 
@@ -387,12 +403,18 @@ def process_batch(spark, cfg, batch_id):
     """
     result = {"_batch_id": batch_id, "entities": {}, "n_warn_by_rule": {},
               "delta_versions_written": {}}
+    batch_orders = None
     for entity in ENTITY_ORDER:
         stats, warns, versions, deduped = process_entity(spark, cfg, entity, batch_id)
-        deduped.unpersist()
+        if entity == "orders":
+            batch_orders = deduped        # giu lai cho quy tac sau order_items
+        else:
+            deduped.unpersist()
         result["entities"][entity] = stats
         result["n_warn_by_rule"].update(warns)
         result["delta_versions_written"].update(versions)
+    result["n_warn_by_rule"].update(check_amount_matches_items(spark, cfg, batch_orders))
+    batch_orders.unpersist()
     for col in ("n_input", "n_valid", "n_quarantined", "n_duplicates_removed"):
         result[col] = sum(s[col] for s in result["entities"].values())
     result["input_files"] = sorted(
