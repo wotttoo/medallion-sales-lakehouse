@@ -300,7 +300,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k reconciliation` pass.
 
-- [ ] **T52. Check no_orphan_keys**
+- [x] **T52. Check no_orphan_keys**
   - Việc: mọi khóa trong `fact_sales` phải có trong các dim. Cần T41, T43.
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k orphan` pass.

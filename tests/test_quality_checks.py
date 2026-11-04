@@ -126,3 +126,19 @@ def test_reconciliation_detects_mismatch(spark, small_lakehouse):
     bad.write.format("delta").mode("overwrite").save(path)
     with pytest.raises(qc.QualityCheckError, match="daily_revenue_by_channel.*2026-10-19"):
         qc.check_revenue_reconciliation(spark, small_lakehouse)
+
+
+# ---------------------------------------------------------------- T52 no_orphan_keys
+def test_orphan_keys_ok(spark, small_lakehouse):
+    """Gold dung tu Silver nhat quan thi khong co khoa mo coi."""
+    assert qc.check_no_orphan_keys(spark, small_lakehouse) == {"no_orphan_keys": "ok"}
+
+
+def test_orphan_keys_detected(spark, small_lakehouse):
+    """Xoa mot khach khoi dim_customer -> fail, neu ro cot va vi du."""
+    import gold_build as gb
+    path = gb.gold_path(small_lakehouse, "dim_customer")
+    gb.read_gold(spark, small_lakehouse, "dim_customer").where("customer_id <> 'C-2'") \
+        .write.format("delta").mode("overwrite").save(path)
+    with pytest.raises(qc.QualityCheckError, match="customer_id -> dim_customer.*C-2"):
+        qc.check_no_orphan_keys(spark, small_lakehouse)

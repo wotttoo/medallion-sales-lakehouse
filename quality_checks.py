@@ -120,3 +120,32 @@ def check_revenue_reconciliation(spark, cfg):
     if broken:
         raise QualityCheckError(f"revenue_reconciliation that bai (gold, silver): {broken}")
     return {"revenue_reconciliation": {d.isoformat(): v for d, v in sorted(expected.items())}}
+
+
+# ---------------------------------------------------------------------------
+# no_orphan_keys
+# ---------------------------------------------------------------------------
+# cot trong fact_sales -> (bang dim, cot khoa cua dim)
+FACT_DIM_KEYS = [
+    ("customer_id", "dim_customer", "customer_id"),
+    ("product_id", "dim_product", "product_id"),
+    ("order_date", "dim_date", "date"),
+]
+
+
+def check_no_orphan_keys(spark, cfg):
+    """Moi khoa trong fact_sales phai ton tai trong bang dim tuong ung."""
+    fact = read_gold(spark, cfg, "fact_sales")
+    orphans = {}
+    for fact_col, dim_table, dim_col in FACT_DIM_KEYS:
+        # BEGIN SOLUTION
+        dim = read_gold(spark, cfg, dim_table).select(F.col(dim_col).alias(fact_col))
+        missing = fact.select(fact_col).distinct().join(dim, fact_col, "left_anti")
+        n = missing.count()
+        # END SOLUTION
+        if n:
+            sample = [str(r[0]) for r in missing.limit(5).collect()]
+            orphans[f"{fact_col} -> {dim_table}"] = {"n": n, "vi_du": sample}
+    if orphans:
+        raise QualityCheckError(f"no_orphan_keys that bai: {orphans}")
+    return {"no_orphan_keys": "ok"}
