@@ -51,7 +51,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
   - File: `config.yaml`, `common/__init__.py`, `common/config.py`, `tests/test_config.py`
   - Xong khi: `pytest tests/test_config.py` pass.
 
-- [ ] **T04. Ánh xạ tên bảng** (P1)
+- [x] **T04. Ánh xạ tên bảng** (P1)
   - Việc: hàm đổi tên logic sang đường dẫn: `bronze.orders_raw` → `lakehouse/bronze/orders_raw`, `silver.orders_quarantine` → `lakehouse/quarantine/orders`. Dùng `pathlib`.
   - File: `common/paths.py`, `tests/test_paths.py`
   - Xong khi: `pytest tests/test_paths.py` pass.
