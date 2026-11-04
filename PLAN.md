@@ -322,7 +322,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `experiments/exp1_idempotency.py`
   - Xong khi: `python experiments/exp1_idempotency.py` trả exit code 0.
 
-- [ ] **T56. Thí nghiệm 2: đổi quy tắc** (P5)
+- [x] **T56. Thí nghiệm 2: đổi quy tắc** (P5)
   - Việc: chạy v1 rồi `--rebuild` v2; assert số cách ly, doanh thu, `_failed_rules` của ORD-1002, Bronze không đổi.
   - File: `experiments/exp2_rule_change.py`
   - Xong khi: `python experiments/exp2_rule_change.py` trả exit code 0.
