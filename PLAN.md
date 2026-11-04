@@ -327,7 +327,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `experiments/exp2_rule_change.py`
   - Xong khi: `python experiments/exp2_rule_change.py` trả exit code 0.
 
-- [ ] **T57. Thí nghiệm 3: time travel** (P5)
+- [x] **T57. Thí nghiệm 3: time travel** (P5)
   - Việc: in `DESCRIBE HISTORY`, so phiên bản trước và sau ngày 2, ghi lô sai rồi `RESTORE`.
   - File: `experiments/exp3_time_travel.py`
   - Xong khi: `python experiments/exp3_time_travel.py` trả exit code 0.
