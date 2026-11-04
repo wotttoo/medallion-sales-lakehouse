@@ -168,12 +168,78 @@ def make_master_data(cfg):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Orders va order_items sach
+# ---------------------------------------------------------------------------
+def weighted_choice(rng, weights):
+    """Chon mot khoa trong dict weights theo ty trong."""
+    keys = list(weights)
+    return rng.choices(keys, weights=[weights[k] for k in keys], k=1)[0]
+
+
+def random_time(rng, date, start_hour=8, end_hour=21):
+    """Thoi diem ngau nhien trong ngay, dang 'YYYY-MM-DD HH:MM:SS'."""
+    seconds = rng.randrange(start_hour * 3600, end_hour * 3600)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{date} {h:02d}:{m:02d}:{s:02d}"
+
+
+def make_order(rng, cfg, order_id, date, customer_ids, product_state):
+    """Sinh mot don sach kem cac dong san pham (khong lap san pham)."""
+    vol = cfg["volume"]
+    n_items = rng.randint(*vol["items_per_order"])
+    product_ids = sorted(rng.sample(sorted(product_state), n_items))
+    items = []
+    for pid in product_ids:
+        quantity = rng.randint(*vol["quantity_range"])
+        items.append({"order_id": order_id, "product_id": pid, "quantity": quantity,
+                      "unit_price": product_state[pid]["list_price"]})
+    order = {
+        "order_id": order_id,
+        "customer_id": rng.choice(customer_ids),
+        "order_date": date,
+        "total_amount": sum(i["quantity"] * i["unit_price"] for i in items),
+        "status": weighted_choice(rng, cfg["status_weights"]),
+        "channel": weighted_choice(rng, cfg["channel_weights"]),
+        "updated_at": random_time(rng, date),
+    }
+    return {"order": order, "items": items}
+
+
+def make_clean_orders(cfg, master):
+    """Sinh don moi sach cho tung ngay, order_id tang dan tu ORD-1001.
+
+    Tra ve dict date -> list {"order": {...}, "items": [...]}.
+    Khach va gia san pham lay theo trang thai tich luy den ngay do.
+    """
+    rng = make_rng(cfg["seed"], "orders")
+    customer_ids, product_state = [], {}
+    next_id = 1001
+    result = {}
+    for date in cfg["dates"]:
+        for c in master[date]["customers"]:
+            if c["customer_id"] not in customer_ids:
+                customer_ids.append(c["customer_id"])
+        for p in master[date]["products"]:
+            product_state[p["product_id"]] = p
+        orders = []
+        for _ in range(cfg["volume"]["orders_per_day"]):
+            orders.append(make_order(rng, cfg, f"ORD-{next_id}", date,
+                                     customer_ids, product_state))
+            next_id += 1
+        result[date] = orders
+    return result
+
+
 def main():
     """Diem vao dong lenh (hoan thien o cac task sau)."""
     cfg = load_config()
     master = make_master_data(cfg)
+    orders = make_clean_orders(cfg, master)
     for date, data in master.items():
-        print(date, len(data["products"]), "products,", len(data["customers"]), "customers")
+        print(date, len(data["products"]), "products,", len(data["customers"]),
+              "customers,", len(orders[date]), "orders")
 
 
 if __name__ == "__main__":

@@ -68,3 +68,42 @@ def test_master_showcase_product_prices(cfg, master):
     """P-001, P-002 co gia co dinh cho ban ghi minh hoa."""
     prices = {p["product_id"]: p["list_price"] for p in master[cfg["dates"][0]]["products"]}
     assert prices["P-001"] == 50_000 and prices["P-002"] == 75_000
+
+
+# ---------------------------------------------------------------- T08 clean orders
+@pytest.fixture(scope="module")
+def clean_orders(cfg, master):
+    """Don sach theo ngay."""
+    return gd.make_clean_orders(cfg, master)
+
+
+def test_clean_orders_ids_sequential(cfg, clean_orders):
+    """order_id tang dan lien tuc tu ORD-1001 qua cac ngay."""
+    ids = [o["order"]["order_id"] for d in cfg["dates"] for o in clean_orders[d]]
+    n = cfg["volume"]["orders_per_day"] * len(cfg["dates"])
+    assert ids == [f"ORD-{i}" for i in range(1001, 1001 + n)]
+
+
+def test_clean_orders_totals_and_items(cfg, master, clean_orders):
+    """total_amount = tong quantity*unit_price; khong lap san pham trong don."""
+    lo, hi = cfg["volume"]["items_per_order"]
+    for date in cfg["dates"]:
+        for o in clean_orders[date]:
+            order, items = o["order"], o["items"]
+            assert list(order) == gd.ORDER_COLUMNS
+            assert lo <= len(items) <= hi
+            assert len({i["product_id"] for i in items}) == len(items)
+            assert all(list(i) == gd.ITEM_COLUMNS for i in items)
+            assert order["total_amount"] == sum(i["quantity"] * i["unit_price"] for i in items)
+            assert order["order_date"] == date
+            assert order["updated_at"].startswith(date)
+            assert order["status"] in cfg["status_weights"]
+            assert order["channel"] in cfg["channels"]
+
+
+def test_clean_orders_reference_known_customers(cfg, master, clean_orders):
+    """Don chi tro toi khach da co den ngay do."""
+    known = set()
+    for date in cfg["dates"]:
+        known |= {c["customer_id"] for c in master[date]["customers"]}
+        assert {o["order"]["customer_id"] for o in clean_orders[date]} <= known

@@ -74,7 +74,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k master` pass.
 
-- [ ] **T08. Sinh orders và order_items sạch**
+- [x] **T08. Sinh orders và order_items sạch**
   - Việc: sinh đơn theo ngày, `order_id` tăng dần từ `ORD-1001`; `total_amount` = tổng `quantity * unit_price`; không lặp sản phẩm trong một đơn.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k clean_orders` pass.
