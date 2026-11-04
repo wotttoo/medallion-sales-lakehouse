@@ -61,7 +61,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
   - File: `common/spark.py`, `tests/conftest.py`, `tests/test_spark.py`
   - Xong khi: `pytest tests/test_spark.py` pass (ghi rồi đọc lại một bảng Delta tạm).
 
-- [ ] **T06. README phần cài đặt**
+- [x] **T06. README phần cài đặt**
   - Việc: viết hướng dẫn tiếng Việt: Python, Java, cài trên Linux/macOS, `HADOOP_HOME` và `winutils.exe` cho Windows, cách đặt tên file landing.
   - File: `README.md`
   - Xong khi: `grep -c -E "Java|HADOOP_HOME|winutils" README.md` ra ít nhất 3.
