@@ -167,3 +167,66 @@ def test_append_and_skip_bad_file_fails_without_writing(spark, generated, tmp_pa
         bi.ingest_date(spark, cfg, "2026-10-19")
     assert run_log.read_ingested_files(spark, cfg).count() == 0
     assert not (tmp_path / "lh" / "bronze").exists()
+
+
+# ---------------------------------------------------------------- T26 doi chieu answer key
+@pytest.fixture(scope="module")
+def bronze_all(spark, generated, tmp_path_factory):
+    """Lakehouse da nap Bronze ca 3 ngay."""
+    out, _ = generated
+    cfg = load_config(landing_dir=out / "landing", lakehouse_dir=tmp_path_factory.mktemp("lh_all"))
+    for d in cfg["dates"]:
+        bi.ingest_date(spark, cfg, d)
+    return cfg
+
+
+def test_bronze_rows_equal_landing_all_days(spark, bronze_all, generated):
+    """So dong Bronze moi lo = so dong landing cua ngay trong answer key."""
+    _, key = generated
+    for i, d in enumerate(bronze_all["dates"], start=1):
+        batch = f"b-{i:04d}"
+        for entity in bi.ENTITY_ORDER:
+            n = bi.read_bronze(spark, bronze_all, entity, batch).count()
+            assert n == key["days"][d]["landing_counts"][entity], (d, entity)
+    total = sum(key["days"][d]["landing_counts"]["orders"] for d in bronze_all["dates"])
+    assert bi.read_bronze(spark, bronze_all, "orders").count() == total
+
+
+def test_bronze_rows_per_source_file(spark, bronze_all, generated):
+    """So dong theo _source_file khop answer key."""
+    _, key = generated
+    expected = {}
+    for d in bronze_all["dates"]:
+        expected.update(key["days"][d]["landing_file_counts"])
+    got = {}
+    for entity in bi.ENTITY_ORDER:
+        for r in bi.read_bronze(spark, bronze_all, entity).groupBy("_source_file").count().collect():
+            got[r["_source_file"]] = r["count"]
+    assert got == expected
+
+
+def test_bronze_showcase_rows(spark, bronze_all):
+    """Ba dong minh hoa: ORD-1001 (web), ORD-1002 (partner), ORD-1001 (app), cung lo."""
+    rows = (bi.read_bronze(spark, bronze_all, "orders")
+            .where("order_id IN ('ORD-1001', 'ORD-1002')").orderBy("_ingest_time").collect())
+    assert [(r["order_id"], r["_source_file"]) for r in rows] == [
+        ("ORD-1001", "web_2026-10-19.csv"), ("ORD-1001", "app_2026-10-19.csv"),
+        ("ORD-1002", "partner_2026-10-19.json")]
+    assert len({r["_batch_id"] for r in rows}) == 1
+    assert rows[0]["_batch_id"].startswith("b-") and len(rows[0]["_batch_id"]) == 6
+    web, app = rows[0], rows[1]
+    assert app["_ingest_time"] > web["_ingest_time"]
+    o2 = rows[2]
+    assert o2["order_date"] == "19/10/2026" and o2["total_amount"] == "150.000đ"
+    assert [r["status"] for r in rows] == ["delivered", "delivered", "shipping"]
+
+
+def test_bronze_day3_promo_code(spark, bronze_all):
+    """Ngay 3 nhan cot promo_code (schema evolution); cac lo truoc la null."""
+    df = bi.read_bronze(spark, bronze_all, "orders")
+    assert "promo_code" in df.columns
+    assert dict(df.dtypes)["promo_code"] == "string"
+    assert df.where("_batch_id <> 'b-0003' AND promo_code IS NOT NULL").count() == 0
+    assert df.where("_batch_id = 'b-0003' AND promo_code IS NOT NULL").count() > 0
+    non_meta = [c for c in df.columns if not c.startswith("_")]
+    assert all(dict(df.dtypes)[c] == "string" for c in non_meta)

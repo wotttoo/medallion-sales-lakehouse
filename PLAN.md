@@ -166,7 +166,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer bronze` trả exit code 0.
 
-- [ ] **T26. Kiểm chứng Bronze theo answer key**
+- [x] **T26. Kiểm chứng Bronze theo answer key**
   - Việc: so số dòng Bronze với landing cả 3 ngày; kiểm 3 dòng minh họa (SPEC mục 9); ngày 3 có `promo_code`.
   - File: `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py` pass toàn bộ.
