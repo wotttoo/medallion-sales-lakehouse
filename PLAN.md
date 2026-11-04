@@ -136,7 +136,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
 
 ## M3. Bronze
 
-- [ ] **T20. Bảng ingested_files** (P2)
+- [x] **T20. Bảng ingested_files** (P2)
   - Việc: đọc và ghi `lakehouse/_meta/ingested_files`.
   - File: `common/run_log.py`, `tests/test_run_log.py`
   - Xong khi: `pytest tests/test_run_log.py -k ingested` pass.
