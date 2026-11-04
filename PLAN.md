@@ -250,7 +250,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k dims` pass.
 
-- [ ] **T42. Tìm các ngày bị ảnh hưởng** (P4)
+- [x] **T42. Tìm các ngày bị ảnh hưởng** (P4)
   - Việc: lấy tập `order_date` chịu tác động của lô, gồm đơn đến muộn và đơn cập nhật trạng thái.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k affected_dates` pass.

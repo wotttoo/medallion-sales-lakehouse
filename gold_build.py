@@ -9,6 +9,7 @@ cho moi order_date bi anh huong boi lo.
 
 from pyspark.sql import functions as F
 
+from bronze_ingest import read_bronze
 from common.paths import table_uri
 from common.run_log import table_version
 from silver_transform import read_silver
@@ -67,3 +68,28 @@ def write_dims(spark, cfg):
         "gold.dim_product": overwrite_table(spark, cfg, "dim_product", build_dim_product(spark, cfg)),
         "gold.dim_date": overwrite_table(spark, cfg, "dim_date", build_dim_date(spark, cfg)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Ngay bi anh huong boi mot lo
+# ---------------------------------------------------------------------------
+def affected_dates(spark, cfg, batch_id):
+    """Tap order_date (theo silver.orders hien tai) cua moi don co dong trong lo.
+
+    Gom ca don den muon (order_date cu hon ngay xu ly) va don gui lai de cap nhat
+    trang thai, vi vay khong chi la processing_date.
+    """
+    # BEGIN SOLUTION
+    order_ids = (read_bronze(spark, cfg, "orders", batch_id).select("order_id")
+                 .unionByName(read_bronze(spark, cfg, "order_items", batch_id).select("order_id"))
+                 .select(F.trim("order_id").alias("order_id")).distinct())
+    rows = (read_silver(spark, cfg, "orders").join(order_ids, "order_id")
+            .select("order_date").distinct().collect())
+    # END SOLUTION
+    return sorted(r["order_date"] for r in rows if r["order_date"] is not None)
+
+
+def all_order_dates(spark, cfg):
+    """Moi order_date dang co trong silver.orders (dung khi dung lai Gold toan bo)."""
+    rows = read_silver(spark, cfg, "orders").select("order_date").distinct().collect()
+    return sorted(r["order_date"] for r in rows if r["order_date"] is not None)

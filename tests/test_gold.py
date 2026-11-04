@@ -55,3 +55,29 @@ def test_dims_overwrite_is_idempotent(spark, day1):
     n = gb.read_gold(spark, day1, "dim_customer").count()
     gb.write_dims(spark, day1)
     assert gb.read_gold(spark, day1, "dim_customer").count() == n
+
+
+# ---------------------------------------------------------------- T42 ngay bi anh huong
+@pytest.fixture(scope="module")
+def two_days(spark, generated, tmp_path_factory):
+    """Lakehouse da chay Bronze + Silver (v2) cho ngay 1 va ngay 2."""
+    landing, _ = generated
+    cfg = load_config(landing_dir=landing, lakehouse_dir=tmp_path_factory.mktemp("lh_gold2"),
+                      rules_version="v2")
+    for d in ["2026-10-19", "2026-10-20"]:
+        bronze_ingest.ingest_date(spark, cfg, d)
+    for b in st.all_batches(spark, cfg):
+        st.process_batch(spark, cfg, b)
+    return cfg
+
+
+def test_affected_dates_first_batch(spark, day1):
+    """Lo ngay 1 chi anh huong ngay 1."""
+    assert gb.affected_dates(spark, day1, "b-0001") == [dt.date(2026, 10, 19)]
+
+
+def test_affected_dates_include_late_and_updates(spark, two_days):
+    """Lo ngay 2 anh huong ca ngay 1 (don den muon T2 va don cap nhat T1)."""
+    assert gb.affected_dates(spark, two_days, "b-0002") == [dt.date(2026, 10, 19),
+                                                           dt.date(2026, 10, 20)]
+    assert gb.all_order_dates(spark, two_days) == [dt.date(2026, 10, 19), dt.date(2026, 10, 20)]
