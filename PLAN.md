@@ -280,7 +280,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer gold` trả exit code 0.
 
-- [ ] **T48. Check record_conservation** (P4)
+- [x] **T48. Check record_conservation** (P4)
   - Việc: kiểm đẳng thức bảo toàn cho mỗi thực thể; vi phạm thì raise.
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k conservation` pass.
