@@ -31,8 +31,8 @@ def clean_string(col_name):
 
 
 def metadata(df):
-    """Cac cot metadata co trong df (giu nguyen)."""
-    return [F.col(c) for c in METADATA_COLUMNS if c in df.columns]
+    """Cac cot metadata co trong df (giu nguyen), ke ca ban goc _raw neu co."""
+    return [F.col(c) for c in METADATA_COLUMNS + ["_raw"] if c in df.columns]
 
 
 def normalize_products(df):
@@ -276,3 +276,54 @@ def merge_into_silver(spark, cfg, entity, deduped):
 def read_silver(spark, cfg, entity):
     """Doc bang Silver cua thuc the."""
     return spark.read.format("delta").load(table_uri(silver_table_name(entity), cfg))
+
+
+# ---------------------------------------------------------------------------
+# Quarantine: giu nguyen gia tri goc (string) + ly do
+# ---------------------------------------------------------------------------
+RAW_COLUMNS = {
+    "products": ["product_id", "name", "category", "list_price"],
+    "customers": ["customer_id", "name", "email", "phone", "city"],
+    "orders": ["order_id", "customer_id", "order_date", "total_amount", "status",
+               "channel", "updated_at", "promo_code"],
+    "order_items": ["order_id", "product_id", "quantity", "unit_price"],
+}
+
+
+def quarantine_table_name(entity):
+    """Ten logic bang quarantine (reading goi la silver.<entity>_quarantine)."""
+    return f"quarantine.{entity}"
+
+
+def attach_raw(bronze_df, entity):
+    """Dong goi gia tri goc (string) vao cot struct _raw truoc khi chuan hoa."""
+    fields = [(F.col(c) if c in bronze_df.columns else F.lit(None)).cast("string").alias(c)
+              for c in RAW_COLUMNS[entity]]
+    return bronze_df.withColumn("_raw", F.struct(*fields))
+
+
+def to_quarantine_rows(quarantined):
+    """Cot quarantine: cot goc string + _ingest_time, _source_file, _batch_id,
+    _failed_rules, _quarantined_at."""
+    return quarantined.select(
+        "_raw.*", "_ingest_time", "_source_file", "_batch_id", "_failed_rules",
+        F.current_timestamp().alias("_quarantined_at"))
+
+
+def write_quarantine(spark, cfg, entity, quarantined, batch_id):
+    """Ghi ban ghi cach ly cua lo vao quarantine.<entity>; tra ve phien ban Delta.
+
+    Ghi de dung phan cua lo (replaceWhere _batch_id) nen chay lai mot lo khong nhan doi.
+    """
+    rows = to_quarantine_rows(quarantined)
+    path = table_uri(quarantine_table_name(entity), cfg)
+    ensure_delta_table(spark, path, rows.schema)
+    (rows.write.format("delta").mode("overwrite")
+         .option("replaceWhere", f"_batch_id = '{batch_id}'")
+         .save(path))
+    return table_version(spark, path)
+
+
+def read_quarantine(spark, cfg, entity):
+    """Doc bang quarantine cua thuc the."""
+    return spark.read.format("delta").load(table_uri(quarantine_table_name(entity), cfg))

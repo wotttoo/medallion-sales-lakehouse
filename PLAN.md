@@ -213,7 +213,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k merge` pass (T1 cập nhật, bản cũ hơn không ghi đè).
 
-- [ ] **T35. Ghi quarantine**
+- [x] **T35. Ghi quarantine**
   - Việc: giữ cột gốc string, thêm `_failed_rules`, `_quarantined_at`, `_batch_id`.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k quarantine` pass.

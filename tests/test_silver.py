@@ -294,3 +294,38 @@ def test_merge_rerun_same_batch_is_idempotent(spark, tmp_cfg):
     st.merge_into_silver(spark, tmp_cfg, "orders", batch)
     st.merge_into_silver(spark, tmp_cfg, "orders", batch)
     assert st.read_silver(spark, tmp_cfg, "orders").count() == 2
+
+
+# ---------------------------------------------------------------- T35 quarantine
+def quarantine_sample(spark, batch_id="b-0001", version="v1"):
+    """Bronze mau -> _raw -> chuan hoa -> ap quy tac -> phan cach ly."""
+    data = [(r, i, f"src_{i}.csv") for i, r in enumerate(SAMPLE_ORDERS)]
+    bronze = bronze_like_orders(spark, data).withColumn("_batch_id", st.F.lit(batch_id))
+    df = st.normalize_orders(st.attach_raw(bronze, "orders"), version)
+    checked, _ = st.apply_rules(df, "orders")
+    return st.split_valid_quarantine(checked)[1]
+
+
+def test_quarantine_keeps_raw_strings(spark, tmp_cfg):
+    """Cot goc giu nguyen string ('19/10/2026', '150.000đ') + ly do + metadata."""
+    st.write_quarantine(spark, tmp_cfg, "orders", quarantine_sample(spark), "b-0001")
+    q = st.read_quarantine(spark, tmp_cfg, "orders")
+    assert q.columns == st.RAW_COLUMNS["orders"] + [
+        "_ingest_time", "_source_file", "_batch_id", "_failed_rules", "_quarantined_at"]
+    types = dict(q.dtypes)
+    assert all(types[c] == "string" for c in st.RAW_COLUMNS["orders"])
+    row = q.where("order_id = 'ORD-1002'").collect()[0]
+    assert row["order_date"] == "19/10/2026" and row["total_amount"] == "150.000đ"
+    assert row["customer_id"] == ""
+    assert row["_failed_rules"] == "customer_id_not_null; order_date_valid_format; total_amount_numeric"
+    assert row["_batch_id"] == "b-0001" and row["_quarantined_at"] is not None
+
+
+def test_quarantine_rerun_batch_replaces(spark, tmp_cfg):
+    """Ghi lai cung lo thay the phan cua lo do; lo khac giu nguyen."""
+    st.write_quarantine(spark, tmp_cfg, "orders", quarantine_sample(spark, "b-0001"), "b-0001")
+    st.write_quarantine(spark, tmp_cfg, "orders", quarantine_sample(spark, "b-0002"), "b-0002")
+    st.write_quarantine(spark, tmp_cfg, "orders", quarantine_sample(spark, "b-0001", "v2"), "b-0001")
+    q = st.read_quarantine(spark, tmp_cfg, "orders")
+    counts = {r["_batch_id"]: r["count"] for r in q.groupBy("_batch_id").count().collect()}
+    assert counts == {"b-0001": 2, "b-0002": 2}
