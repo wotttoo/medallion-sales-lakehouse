@@ -41,7 +41,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
   - File: `.gitignore`
   - Xong khi: `git rev-parse HEAD` in ra hash và `git check-ignore landing lakehouse answer_key .venv` in đủ 4 dòng.
 
-- [ ] **T02. Ghim phụ thuộc**
+- [x] **T02. Ghim phụ thuộc**
   - Việc: tạo `requirements.txt` với 4 phiên bản ghim ở `CLAUDE.md`; tạo `pytest.ini` với `pythonpath = .`, `testpaths = tests`.
   - File: `requirements.txt`, `pytest.ini`
   - Xong khi: `pip install -r requirements.txt && pip check` thành công.
