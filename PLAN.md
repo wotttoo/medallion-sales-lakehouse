@@ -265,7 +265,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k revenue_by_category` pass.
 
-- [ ] **T45. KPI theo channel** (P4)
+- [x] **T45. KPI theo channel** (P4)
   - Việc: `gold.daily_revenue_by_channel`, cùng cách ghi.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k revenue_by_channel` pass.

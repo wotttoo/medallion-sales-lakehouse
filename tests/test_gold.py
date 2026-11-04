@@ -134,8 +134,7 @@ def build_until(spark, cfg, batches):
         gb.write_dims(spark, cfg)
         gb.write_fact_sales(spark, cfg, dates)
         gb.write_revenue_by_category(spark, cfg, dates)
-        if hasattr(gb, "write_revenue_by_channel"):
-            gb.write_revenue_by_channel(spark, cfg, dates)
+        gb.write_revenue_by_channel(spark, cfg, dates)
 
 
 def test_revenue_by_category_day1(spark, day1, generated):
@@ -153,3 +152,22 @@ def test_revenue_by_category_after_late_arrivals(spark, two_days, generated):
     got = kpi_rows(spark, two_days, "daily_revenue_by_category", "category")
     assert got == key["days"]["2026-10-20"]["outcomes"]["v2"]["revenue_by_category"]
     assert got != key["days"]["2026-10-19"]["outcomes"]["v2"]["revenue_by_category"]
+
+
+# ---------------------------------------------------------------- T45 KPI theo channel
+def test_revenue_by_channel_matches_answer_key(spark, two_days, generated):
+    """Doanh thu order_date x channel sau ngay 2 khop answer key (v2)."""
+    _, key = generated
+    build_until(spark, two_days, ["b-0002"])     # chay lai lo 2: ket qua khong doi
+    assert kpi_rows(spark, two_days, "daily_revenue_by_channel", "channel") == \
+        key["days"]["2026-10-20"]["outcomes"]["v2"]["revenue_by_channel"]
+
+
+def test_revenue_by_channel_day1(spark, day1, generated):
+    """Sau ngay 1, KPI theo channel khop answer key; tong bang KPI theo category."""
+    _, key = generated
+    build_until(spark, day1, ["b-0001"])
+    assert kpi_rows(spark, day1, "daily_revenue_by_channel", "channel") == \
+        key["days"]["2026-10-19"]["outcomes"]["v2"]["revenue_by_channel"]
+    total = lambda t: gb.read_gold(spark, day1, t).agg(gb.F.sum("revenue")).collect()[0][0]
+    assert total("daily_revenue_by_channel") == total("daily_revenue_by_category")

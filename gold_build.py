@@ -170,3 +170,15 @@ def write_revenue_by_category(spark, cfg, dates):
     """Ghi de KPI theo category cho cac ngay bi anh huong."""
     return replace_dates(spark, cfg, "daily_revenue_by_category",
                          build_revenue_by_category(spark, cfg), dates)
+
+
+def build_revenue_by_channel(spark, cfg):
+    """daily_revenue_by_channel: order_date, channel, revenue, n_orders."""
+    return aggregate_revenue(revenue_lines(spark, cfg), "order_date", "channel").select(
+        "order_date", "channel", "revenue", "n_orders")
+
+
+def write_revenue_by_channel(spark, cfg, dates):
+    """Ghi de KPI theo channel cho cac ngay bi anh huong."""
+    return replace_dates(spark, cfg, "daily_revenue_by_channel",
+                         build_revenue_by_channel(spark, cfg), dates)
