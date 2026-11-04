@@ -36,7 +36,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
 
 ## M1. Khung project
 
-- [ ] **T01. Khởi tạo git**
+- [x] **T01. Khởi tạo git**
   - Việc: `git init`, tạo `.gitignore` bỏ qua `.venv/`, `landing/`, `answer_key/`, `lakehouse/`, `student/`, `__pycache__/`; commit đầu tiên gồm `CLAUDE.md`, `SPEC.md`, `PLAN.md`.
   - File: `.gitignore`
   - Xong khi: `git rev-parse HEAD` in ra hash và `git check-ignore landing lakehouse answer_key .venv` in đủ 4 dòng.
