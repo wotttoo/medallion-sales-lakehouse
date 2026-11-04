@@ -191,3 +191,52 @@ def test_apply_rules_items_reference_flags(spark):
     assert got == {("ORD-1", "P-001"): None,
                    ("ORD-1", "P-999"): "quantity_positive; product_exists",
                    ("ORD-2", "P-001"): "order_exists"}
+
+
+# ---------------------------------------------------------------- T33 loai trung
+def bronze_like_orders(spark, rows):
+    """Tao DataFrame giong Bronze (co metadata) tu list (row, ingest_time, source_file)."""
+    import datetime as dt
+    data = [r + (dt.datetime(2026, 10, 19, 12, 0, 0) + dt.timedelta(seconds=t), f)
+            for r, t, f in rows]
+    return spark.createDataFrame(data, ORDER_COLS + ", _ingest_time timestamp, _source_file string")
+
+
+def test_dedup_latest_updated_at_wins(spark):
+    """B1: dong co updated_at moi hon duoc giu, bat ke thu tu tep."""
+    df = bronze_like_orders(spark, [
+        (("ORD-1", "C-1", "2026-10-19", "10", "pending", "web", "2026-10-19 10:00:00"), 1, "web.csv"),
+        (("ORD-1", "C-1", "2026-10-19", "10", "pending", "app", "2026-10-19 09:00:00"), 2, "app.csv"),
+    ])
+    out = st.deduplicate(st.normalize_orders(df, "v2"), "orders").collect()
+    assert [(r["order_id"], r["channel"]) for r in out] == [("ORD-1", "web")]
+
+
+def test_dedup_tie_breaker_b2(spark):
+    """B2: cung updated_at -> _ingest_time muon hon thang; tiep theo la _source_file."""
+    same = "2026-10-19 10:00:00"
+    df = bronze_like_orders(spark, [
+        (("ORD-2", "C-1", "2026-10-19", "10", "pending", "web", same), 1, "web.csv"),
+        (("ORD-2", "C-1", "2026-10-19", "10", "shipping", "partner", same), 3, "partner.json"),
+        (("ORD-3", "C-1", "2026-10-19", "10", "pending", "web", same), 5, "a.csv"),
+        (("ORD-3", "C-1", "2026-10-19", "10", "delivered", "app", same), 5, "b.csv"),
+    ])
+    for _ in range(3):   # ket qua on dinh qua nhieu lan chay
+        got = {r["order_id"]: r["status"]
+               for r in st.deduplicate(st.normalize_orders(df.repartition(4), "v2"), "orders").collect()}
+        assert got == {"ORD-2": "shipping", "ORD-3": "delivered"}
+
+
+def test_dedup_entities_without_updated_at(spark):
+    """customers: khong co updated_at, sap theo _ingest_time roi _source_file."""
+    import datetime as dt
+    t = dt.datetime(2026, 10, 19, 12, 0, 0)
+    df = spark.createDataFrame(
+        [("C-1", "A", "a@x.com", "1", "Hue", t, "c1.csv"),
+         ("C-1", "A", "a@x.com", "1", "Da Nang", t + dt.timedelta(seconds=1), "c2.csv"),
+         ("C-2", "B", "B@X.COM", "1", "Hue", t, "c1.csv"),
+         ("C-2", "B", "b@x.com", "1", "Hue", t, "c1.csv")],
+        CUSTOMER_COLS + ", _ingest_time timestamp, _source_file string")
+    out = {r["customer_id"]: r for r in st.deduplicate(st.normalize_customers(df), "customers").collect()}
+    assert out["C-1"]["city"] == "Da Nang"
+    assert out["C-2"]["email"] == "b@x.com" and len(out) == 2

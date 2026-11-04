@@ -9,6 +9,7 @@ Trinh tu cho moi thuc the, moi lo:
 Thu tu thuc the: products -> customers -> orders -> order_items.
 """
 
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 from quality_rules import rules_for
@@ -188,3 +189,33 @@ def split_valid_quarantine(checked):
     quarantined = checked.where(F.col("_failed_rules").isNotNull())
     # END SOLUTION
     return valid, quarantined
+
+
+# ---------------------------------------------------------------------------
+# Buoc 4: loai trung
+# ---------------------------------------------------------------------------
+ENTITY_KEYS = {
+    "products": ["product_id"],
+    "customers": ["customer_id"],
+    "orders": ["order_id"],
+    "order_items": ["order_id", "product_id"],
+}
+
+
+def dedup_order(df):
+    """Thu tu uu tien trong window: updated_at (neu co), _ingest_time, _source_file - giam dan."""
+    order = []
+    if "updated_at" in df.columns:
+        order.append(F.col("updated_at").desc_nulls_last())
+    order += [F.col("_ingest_time").desc(), F.col("_source_file").desc()]
+    return order
+
+
+def deduplicate(valid, entity):
+    """Giu mot dong moi khoa: dong dung dau theo dedup_order."""
+    # BEGIN SOLUTION
+    window = Window.partitionBy(*ENTITY_KEYS[entity]).orderBy(*dedup_order(valid))
+    return (valid.withColumn("_rn", F.row_number().over(window))
+                 .where(F.col("_rn") == 1)
+                 .drop("_rn"))
+    # END SOLUTION

@@ -203,7 +203,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k apply_rules` pass.
 
-- [ ] **T33. Loại trùng**
+- [x] **T33. Loại trùng**
   - Việc: window theo khóa với tie-breaker SPEC 7.3 bước 4; thực thể không có `updated_at` dùng phần còn lại.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k dedup` pass (gồm các cặp B2).
