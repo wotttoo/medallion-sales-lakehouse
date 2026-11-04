@@ -349,7 +349,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `tools/make_student_version.py`, `tests/test_student_version.py`
   - Xong khi: `pytest tests/test_student_version.py` pass (không còn marker, `python -m compileall student` thành công).
 
-- [ ] **T61. Đóng gói dữ liệu** (P6)
+- [x] **T61. Đóng gói dữ liệu** (P6)
   - Việc: nén `landing/` thành `data_landing.zip`.
   - File: `tools/package_data.py`, `data_landing.zip`
   - Xong khi: `python tools/package_data.py && python -m zipfile -l data_landing.zip` liệt kê đủ tệp 3 ngày.
