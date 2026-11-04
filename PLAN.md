@@ -332,7 +332,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `experiments/exp3_time_travel.py`
   - Xong khi: `python experiments/exp3_time_travel.py` trả exit code 0.
 
-- [ ] **T58. Xuất reading_numbers.md**
+- [x] **T58. Xuất reading_numbers.md**
   - Việc: script gom số dòng mỗi lớp mỗi ngày, số cách ly theo quy tắc, kết quả 3 thí nghiệm, trích `DESCRIBE HISTORY`. Cần T55–T57.
   - File: `tools/export_reading_numbers.py`, `reading_numbers.md`
   - Xong khi: `python tools/export_reading_numbers.py` tạo file và `grep -c "DESCRIBE HISTORY" reading_numbers.md` ra ít nhất 1.
