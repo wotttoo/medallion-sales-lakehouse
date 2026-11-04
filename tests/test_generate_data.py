@@ -476,3 +476,66 @@ def test_deterministic_byte_identical(tmp_path):
     assert files_a and list(files_a) == list(files_b)
     for rel in files_a:
         assert files_a[rel] == files_b[rel], rel
+
+
+# ---------------------------------------------------------------- T17 answer key: so dem
+@pytest.fixture(scope="module")
+def answer_key(landing):
+    """Answer key sinh cung lan chay voi fixture landing."""
+    return json.loads((landing.parent / "answer_key" / "answer_key.json").read_text(encoding="utf-8"))
+
+
+def count_csv_rows(path):
+    """So dong du lieu cua tep CSV (bo header)."""
+    with path.open(encoding="utf-8", newline="") as f:
+        return sum(1 for _ in csv.reader(f)) - 1
+
+
+def test_key_counts_landing_rows_match_files(cfg, landing, answer_key):
+    """So dong landing trong answer key = so dong doc truc tiep tu tep."""
+    for d in cfg["dates"]:
+        day = answer_key["days"][d]
+        n_orders = 0
+        for ch, fmt in cfg["channels"].items():
+            path = landing / d / "orders" / f"{ch}_{d}.{fmt}"
+            n = count_csv_rows(path) if fmt == "csv" else len(path.read_text(encoding="utf-8").splitlines())
+            assert day["landing_file_counts"][path.name] == n
+            n_orders += n
+        assert day["landing_counts"]["orders"] == n_orders
+        for entity in ["order_items", "customers", "products"]:
+            n = count_csv_rows(landing / d / f"{entity}_{d}.csv")
+            assert day["landing_counts"][entity] == n
+            assert day["landing_file_counts"][f"{entity}_{d}.csv"] == n
+
+
+def test_key_counts_error_codes(cfg, landing, answer_key):
+    """So lan xuat hien cac ma loi doc lai duoc tu tep landing."""
+    d = cfg["dates"][0]
+    rows = []
+    for ch, fmt in cfg["channels"].items():
+        path = landing / d / "orders" / f"{ch}_{d}.{fmt}"
+        if fmt == "csv":
+            with path.open(encoding="utf-8", newline="") as f:
+                rows += list(csv.DictReader(f))
+        else:
+            rows += [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+    counts = answer_key["days"][d]["error_counts"]
+    assert counts["A1_date_ddmmyyyy"] == sum(bool(re.fullmatch(r"\d\d/\d\d/\d{4}", r["order_date"])) for r in rows)
+    assert counts["A2_amount_vnd_string"] == sum(str(r["total_amount"]).endswith("đ") for r in rows)
+    assert counts["C1_missing_customer_id"] == sum(not r["customer_id"] for r in rows)
+    assert counts["A3_status_case"] == sum(r["status"] != r["status"].lower() for r in rows)
+    ids = [r["order_id"] for r in rows]
+    assert counts["B1_dup_cross_channel"] + counts["B2_dup_same_updated_at"] == len(ids) - len(set(ids))
+    assert counts["B2_dup_same_updated_at"] == 5
+    with (landing / d / f"customers_{d}.csv").open(encoding="utf-8", newline="") as f:
+        customers = list(csv.DictReader(f))
+    assert counts["W1_missing_phone"] == sum(not c["phone"] for c in customers)
+    assert counts["A4_email_case"] == len(customers) - len({c["customer_id"] for c in customers})
+
+
+def test_key_counts_all_codes_present(cfg, answer_key):
+    """Moi ngay liet ke du cac ma loi (ke ca bang 0)."""
+    for d in cfg["dates"]:
+        assert set(answer_key["days"][d]["error_counts"]) == set(gd.ERROR_CODES)
+    assert answer_key["days"][cfg["dates"][0]]["error_counts"]["T1_status_update_resend"] == 0
+    assert answer_key["days"][cfg["dates"][2]]["error_counts"]["T3_schema_evolution"] > 0

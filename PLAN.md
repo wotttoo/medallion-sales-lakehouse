@@ -119,7 +119,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k deterministic` pass (hai lần chạy giống hệt từng byte).
 
-- [ ] **T17. Answer key: số bản ghi và mã lỗi**
+- [x] **T17. Answer key: số bản ghi và mã lỗi**
   - Việc: ghi số dòng landing mỗi thực thể và số lần xuất hiện từng `error_code`, tính từ dữ liệu sạch và danh sách lỗi, không gọi pipeline.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k key_counts` pass.

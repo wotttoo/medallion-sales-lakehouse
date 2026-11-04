@@ -727,6 +727,61 @@ def write_landing(cfg, dataset, landing_dir):
     return written
 
 
+# ---------------------------------------------------------------------------
+# Answer key: tinh tu du lieu sach + danh sach loi, KHONG chay pipeline
+# ---------------------------------------------------------------------------
+ERROR_CODES = [
+    "A1_date_ddmmyyyy", "A2_amount_vnd_string", "A3_status_case", "A4_email_case",
+    "B1_dup_cross_channel", "B2_dup_same_updated_at",
+    "C1_missing_customer_id", "C2_quantity_non_positive", "C3_unknown_product",
+    "W1_missing_phone", "W2_amount_mismatch",
+    "T1_status_update_resend", "T2_late_arriving", "T3_schema_evolution",
+]
+ENTITIES = ["products", "customers", "orders", "order_items"]
+
+
+def landing_counts(day):
+    """So dong landing moi thuc the (= so dong mong doi trong Bronze)."""
+    return {entity: len(day[entity]) for entity in ENTITIES}
+
+
+def landing_file_counts(cfg, date, day):
+    """So dong theo tung tep (ten tep = _source_file)."""
+    return {rel.name: len(raw_rows)
+            for rel, _fmt, _cols, raw_rows in landing_files_for_day(cfg, date, day)}
+
+
+def error_counts(day):
+    """So dong mang tung ma loi (mot dong co the mang nhieu ma)."""
+    counts = {code: 0 for code in ERROR_CODES}
+    for entity in ENTITIES:
+        for r in day[entity]:
+            for code in r.errors:
+                counts[code] += 1
+    return counts
+
+
+def build_answer_key(cfg, dataset):
+    """Lap answer key cho moi ngay."""
+    key = {"seed": cfg["seed"], "dates": list(cfg["dates"]), "days": {}}
+    for date in cfg["dates"]:
+        day = dataset[date]
+        key["days"][date] = {
+            "landing_counts": landing_counts(day),
+            "landing_file_counts": landing_file_counts(cfg, date, day),
+            "error_counts": error_counts(day),
+        }
+    return key
+
+
+def write_answer_key(key, path):
+    """Ghi answer key JSON (sap khoa, thut le co dinh de tat dinh)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(key, indent=2, sort_keys=True, ensure_ascii=False)
+    path.write_text(text + "\n", encoding="utf-8", newline="")
+
+
 def parse_args(argv=None):
     """Doc tham so dong lenh."""
     parser = argparse.ArgumentParser(description="Sinh du lieu landing va answer key")
@@ -736,16 +791,21 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
-    """Sinh du lieu va ghi ra dia."""
+    """Sinh du lieu, ghi landing va answer key ra dia."""
     args = parse_args(argv)
     cfg = load_config()
     if args.output_dir:
         landing_dir = Path(args.output_dir) / "landing"
+        key_path = Path(args.output_dir) / "answer_key" / "answer_key.json"
     else:
         landing_dir = resolve_path(cfg, "landing")
+        key_path = resolve_path(cfg, "answer_key")
     dataset = build_dataset(cfg)
     written = write_landing(cfg, dataset, landing_dir)
+    key = build_answer_key(cfg, dataset)
+    write_answer_key(key, key_path)
     print(f"Da ghi {len(written)} tep vao {landing_dir}")
+    print(f"Da ghi answer key vao {key_path}")
 
 
 if __name__ == "__main__":
