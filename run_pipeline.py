@@ -12,11 +12,12 @@ import traceback
 
 from bronze_ingest import ingest_date
 from common.config import load_config
-from common.run_log import read_ingested_files, utc_now, write_run_log
+from common.run_log import read_ingested_files, successful_batches, utc_now, write_run_log
 from common.spark import get_spark
+from gold_build import build_gold
 from silver_transform import all_batches, drop_derived_layers, pending_batches, process_batch
 
-LAYERS = ["bronze", "silver"]
+LAYERS = ["bronze", "silver", "gold"]
 
 
 class PipelineError(Exception):
@@ -103,12 +104,41 @@ def run_silver(spark, cfg, processing_date, batches=None):
     return records
 
 
+def pending_gold_batches(spark, cfg):
+    """Lo da qua Silver thanh cong nhung chua qua Gold (tang dan)."""
+    done = successful_batches(spark, cfg, "gold")
+    return sorted((b for b in successful_batches(spark, cfg, "silver") if b not in done),
+                  key=lambda b: int(b.split("-")[1]))
+
+
+def run_gold(spark, cfg, processing_date, batches=None):
+    """Cap nhat Gold cho cac lo chua qua Gold (hoac danh sach batches), moi lo mot dong run log."""
+    batches = pending_gold_batches(spark, cfg) if batches is None else batches
+    if not batches:
+        print(f"[gold] {processing_date}: khong co lo moi")
+        return [logged_run(spark, cfg, "gold", processing_date, lambda: {"input_files": []})]
+    records = []
+    for batch_id in batches:
+        def work(batch_id=batch_id):
+            result = build_gold(spark, cfg, batch_id)
+            print(f"[gold] lo {batch_id}: ghi lai cac ngay "
+                  + ", ".join(d.isoformat() for d in result["dates"]))
+            return {"_batch_id": batch_id,
+                    "input_files": [f"silver.{e}" for e in ("orders", "order_items",
+                                                             "customers", "products")],
+                    "delta_versions_written": result["delta_versions_written"]}
+        records.append(logged_run(spark, cfg, "gold",
+                                  batch_date(spark, cfg, batch_id) or processing_date, work))
+    return records
+
+
 def run_rebuild(spark, cfg):
     """--rebuild: xoa Silver, quarantine, Gold roi xu ly lai MOI lo tu Bronze theo thu tu."""
     removed = drop_derived_layers(cfg)
     batches = all_batches(spark, cfg)
     print(f"[rebuild] xoa {removed}; xu ly lai {len(batches)} lo voi {cfg['rules_version']}")
     run_silver(spark, cfg, None, batches=batches)
+    run_gold(spark, cfg, None, batches=batches)
 
 
 def run_date(spark, cfg, processing_date, layer):
@@ -119,6 +149,8 @@ def run_date(spark, cfg, processing_date, layer):
         run_bronze(spark, cfg, processing_date)
     if layer in ("silver", "all"):
         run_silver(spark, cfg, processing_date)
+    if layer in ("gold", "all"):
+        run_gold(spark, cfg, processing_date)
 
 
 def main(argv=None, spark=None):

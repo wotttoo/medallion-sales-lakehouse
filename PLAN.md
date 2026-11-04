@@ -275,7 +275,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k top_customers` pass.
 
-- [ ] **T47. Nối Gold vào CLI** (P4)
+- [x] **T47. Nối Gold vào CLI** (P4)
   - Việc: thêm `--layer gold`, ghi run log kèm `delta_versions_written`.
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer gold` trả exit code 0.
