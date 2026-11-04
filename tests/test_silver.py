@@ -397,3 +397,48 @@ def test_amount_match_day1_matches_answer_key(spark, generated, tmp_path):
     bronze_ingest.ingest_date(spark, cfg, "2026-10-19")
     result = st.process_batch(spark, cfg, "b-0001")
     assert result["n_warn_by_rule"] == key["days"]["2026-10-19"]["outcomes"]["v2"]["n_warn_by_rule"]
+
+
+# ---------------------------------------------------------------- T39 rebuild
+def test_rebuild_keeps_bronze_and_reprocesses(spark, generated, tmp_path):
+    """Rebuild v2 sau khi chay v1: Bronze khong doi phien ban, Silver khop answer key v2."""
+    import bronze_ingest
+    import run_pipeline
+    from common.run_log import table_version
+    from common.paths import table_uri
+    landing, key = generated
+    lh = tmp_path / "lh"
+    cfg = make_cfg(landing, lh, "v1")
+    for d in ["2026-10-19", "2026-10-20"]:
+        bronze_ingest.ingest_date(spark, cfg, d)
+    run_pipeline.run_silver(spark, cfg, "2026-10-20")
+    bronze_versions = {e: table_version(spark, table_uri(f"bronze.{e}_raw", cfg)) for e in st.ENTITY_ORDER}
+    bronze_rows = {e: bronze_ingest.read_bronze(spark, cfg, e).count() for e in st.ENTITY_ORDER}
+    assert st.read_quarantine(spark, cfg, "orders").count() == sum(
+        key["days"][d]["outcomes"]["v1"]["entities"]["orders"]["n_quarantined"]
+        for d in ["2026-10-19", "2026-10-20"])
+
+    cfg2 = make_cfg(landing, lh, "v2")
+    assert run_pipeline.main(["--rebuild", "--rules-version", "v2", "--lakehouse-dir", str(lh),
+                              "--landing-dir", str(landing)], spark=spark) == 0
+    assert {e: table_version(spark, table_uri(f"bronze.{e}_raw", cfg2)) for e in st.ENTITY_ORDER} \
+        == bronze_versions
+    assert {e: bronze_ingest.read_bronze(spark, cfg2, e).count() for e in st.ENTITY_ORDER} == bronze_rows
+    expected = key["days"]["2026-10-20"]["outcomes"]["v2"]["silver_counts"]
+    for entity in st.ENTITY_ORDER:
+        assert st.read_silver(spark, cfg2, entity).count() == expected[entity]
+    assert st.read_quarantine(spark, cfg2, "orders").count() == sum(
+        key["days"][d]["outcomes"]["v2"]["entities"]["orders"]["n_quarantined"]
+        for d in ["2026-10-19", "2026-10-20"])
+    assert st.all_batches(spark, cfg2) == ["b-0001", "b-0002"]
+
+
+def test_rebuild_drop_only_derived_layers(tmp_path):
+    """drop_derived_layers chi xoa silver/quarantine/gold."""
+    lh = tmp_path / "lh"
+    for d in ["bronze/orders_raw", "silver/orders", "quarantine/orders", "gold/fact_sales", "_meta/run_log"]:
+        (lh / d).mkdir(parents=True)
+    from common.config import load_config
+    removed = st.drop_derived_layers(load_config(lakehouse_dir=lh))
+    assert removed == ["silver", "quarantine", "gold"]
+    assert sorted(p.name for p in lh.iterdir()) == ["_meta", "bronze"]

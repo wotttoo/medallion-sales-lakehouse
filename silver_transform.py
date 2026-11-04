@@ -9,12 +9,14 @@ Trinh tu cho moi thuc the, moi lo:
 Thu tu thuc the: products -> customers -> orders -> order_items.
 """
 
+import shutil
+
 from delta.tables import DeltaTable
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 from bronze_ingest import read_bronze
-from common.paths import table_uri
+from common.paths import schema_path, table_uri
 from common.run_log import read_ingested_files, successful_batches, table_version
 from quality_rules import rules_for
 
@@ -421,3 +423,28 @@ def process_batch(spark, cfg, batch_id):
         r["file_name"] for r in read_ingested_files(spark, cfg)
         .where(F.col("_batch_id") == batch_id).select("file_name").collect())
     return result
+
+
+# ---------------------------------------------------------------------------
+# Rebuild: dung lai Silver/quarantine/Gold tu Bronze
+# ---------------------------------------------------------------------------
+# chi --rebuild duoc xoa cac lop nay; Bronze va landing KHONG BAO GIO bi xoa
+REBUILD_SCHEMAS = ("silver", "quarantine", "gold")
+
+
+def all_batches(spark, cfg):
+    """Moi _batch_id trong Bronze, theo thu tu nap (b-0001, b-0002, ...)."""
+    ids = {r["_batch_id"] for r in
+           read_ingested_files(spark, cfg).select("_batch_id").distinct().collect()}
+    return sorted(ids, key=lambda b: int(b.split("-")[1]))
+
+
+def drop_derived_layers(cfg):
+    """Xoa thu muc silver/, quarantine/, gold/ cua lakehouse (khong dung Bronze, _meta)."""
+    removed = []
+    for schema in REBUILD_SCHEMAS:
+        path = schema_path(schema, cfg)
+        if path.exists():
+            shutil.rmtree(path)
+            removed.append(schema)
+    return removed

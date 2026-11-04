@@ -14,7 +14,7 @@ from bronze_ingest import ingest_date
 from common.config import load_config
 from common.run_log import read_ingested_files, utc_now, write_run_log
 from common.spark import get_spark
-from silver_transform import pending_batches, process_batch
+from silver_transform import all_batches, drop_derived_layers, pending_batches, process_batch
 
 LAYERS = ["bronze", "silver"]
 
@@ -30,12 +30,14 @@ def parse_args(argv=None):
     parser.add_argument("--layer", default="all", choices=LAYERS + ["all"])
     parser.add_argument("--rules-version", choices=["v1", "v2"],
                         help="ghi de rules_version trong config")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="xoa Silver/quarantine/Gold va dung lai tu Bronze")
     parser.add_argument("--config", help="duong dan config.yaml khac")
     parser.add_argument("--lakehouse-dir", help="ghi de paths.lakehouse")
     parser.add_argument("--landing-dir", help="ghi de paths.landing")
     args = parser.parse_args(argv)
-    if not args.processing_date:
-        parser.error("can --processing-date")
+    if not args.processing_date and not args.rebuild:
+        parser.error("can --processing-date hoac --rebuild")
     return args
 
 
@@ -79,9 +81,9 @@ def batch_date(spark, cfg, batch_id):
     return rows[0]["file_date"] if rows else None
 
 
-def run_silver(spark, cfg, processing_date):
-    """Xu ly moi lo Bronze chua qua Silver, moi lo mot dong run log."""
-    batches = pending_batches(spark, cfg)
+def run_silver(spark, cfg, processing_date, batches=None):
+    """Xu ly cac lo Bronze chua qua Silver (hoac danh sach batches), moi lo mot dong run log."""
+    batches = pending_batches(spark, cfg) if batches is None else batches
     if not batches:
         print(f"[silver] {processing_date}: khong co lo moi")
         return [logged_run(spark, cfg, "silver", processing_date,
@@ -101,6 +103,14 @@ def run_silver(spark, cfg, processing_date):
     return records
 
 
+def run_rebuild(spark, cfg):
+    """--rebuild: xoa Silver, quarantine, Gold roi xu ly lai MOI lo tu Bronze theo thu tu."""
+    removed = drop_derived_layers(cfg)
+    batches = all_batches(spark, cfg)
+    print(f"[rebuild] xoa {removed}; xu ly lai {len(batches)} lo voi {cfg['rules_version']}")
+    run_silver(spark, cfg, None, batches=batches)
+
+
 def run_date(spark, cfg, processing_date, layer):
     """Chay cac layer duoc chon cho mot ngay."""
     if processing_date not in cfg["dates"]:
@@ -118,7 +128,10 @@ def main(argv=None, spark=None):
                       landing_dir=args.landing_dir, rules_version=args.rules_version)
     spark = spark or get_spark()
     try:
-        run_date(spark, cfg, args.processing_date, args.layer)
+        if args.rebuild:
+            run_rebuild(spark, cfg)
+        else:
+            run_date(spark, cfg, args.processing_date, args.layer)
     except Exception as exc:
         traceback.print_exc()
         print(f"PIPELINE FAILED: {exc}", file=sys.stderr)

@@ -233,7 +233,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer silver` trả exit code 0.
 
-- [ ] **T39. Chế độ rebuild**
+- [x] **T39. Chế độ rebuild**
   - Việc: xóa Silver, quarantine, Gold rồi xử lý lại mọi batch theo thứ tự; Bronze giữ nguyên.
   - File: `silver_transform.py`, `run_pipeline.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k rebuild` pass (phiên bản Bronze không đổi).

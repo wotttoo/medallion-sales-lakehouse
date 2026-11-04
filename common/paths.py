@@ -47,3 +47,14 @@ def table_path(name, cfg=None, lakehouse_root=None):
 def table_uri(name, cfg=None, lakehouse_root=None):
     """Duong dan dang chuoi (dung cho spark.read/write)."""
     return str(table_path(name, cfg=cfg, lakehouse_root=lakehouse_root))
+
+
+def schema_path(schema, cfg=None, lakehouse_root=None):
+    """Thu muc chua moi bang cua mot schema logic (vd 'silver' -> lakehouse/silver)."""
+    if schema not in SCHEMA_DIRS:
+        raise ValueError(f"Schema khong hop le: {schema}")
+    if lakehouse_root is None:
+        if cfg is None:
+            raise ValueError("Can truyen cfg hoac lakehouse_root")
+        lakehouse_root = resolve_path(cfg, "lakehouse")
+    return Path(lakehouse_root) / SCHEMA_DIRS[schema]
