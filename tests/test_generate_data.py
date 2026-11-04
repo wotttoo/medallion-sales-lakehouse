@@ -258,3 +258,35 @@ def test_group_b_sources_have_no_other_errors(cfg, dataset):
         for r in dataset[date]["orders"]:
             if "b_source" in r.tags:
                 assert r.errors == []
+
+
+# ---------------------------------------------------------------- T12 nhom C
+def test_group_c_c1_missing_customer(cfg, dataset):
+    """C1: customer_id rong, dung ty le, gom ca ORD-1002."""
+    n = cfg["volume"]["orders_per_day"]
+    for date in cfg["dates"]:
+        rows = error_rows(dataset, date, "orders", "C1_missing_customer_id")
+        assert len(rows) == expected_count(cfg, "C1_missing_customer_id", n)
+        assert all(r.to_raw(gd.ORDER_COLUMNS)["customer_id"] == "" for r in rows)
+        assert all(r.clean["customer_id"] for r in rows)   # ban sach van co khach that
+
+
+def test_group_c_c2_c3_items(cfg, master, dataset):
+    """C2: quantity <= 0; C3: product_id khong co trong products."""
+    product_ids = {p["product_id"] for p in master[cfg["dates"][0]]["products"]}
+    for date in cfg["dates"]:
+        n_items = len(dataset[date]["order_items"])
+        c2 = error_rows(dataset, date, "order_items", "C2_quantity_non_positive")
+        c3 = error_rows(dataset, date, "order_items", "C3_unknown_product")
+        assert len(c2) == expected_count(cfg, "C2_quantity_non_positive", n_items)
+        assert len(c3) == expected_count(cfg, "C3_unknown_product", n_items)
+        assert all(r.values["quantity"] <= 0 for r in c2)
+        assert all(r.values["product_id"] not in product_ids for r in c3)
+        assert all(r.clean["quantity"] > 0 for r in c2)
+
+
+def test_group_c_item_keys_unique(cfg, dataset):
+    """Khoa (order_id, product_id) van duy nhat sau khi cai C3."""
+    for date in cfg["dates"]:
+        keys = [(r.values["order_id"], r.values["product_id"]) for r in dataset[date]["order_items"]]
+        assert len(keys) == len(set(keys))

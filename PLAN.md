@@ -94,7 +94,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_b` pass.
 
-- [ ] **T12. Cài lỗi nhóm C**
+- [x] **T12. Cài lỗi nhóm C**
   - Việc: cài C1, C2, C3 theo tỷ lệ config.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_c` pass.

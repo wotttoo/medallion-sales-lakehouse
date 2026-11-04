@@ -463,6 +463,35 @@ def inject_group_b(cfg, date, day):
 
 
 # ---------------------------------------------------------------------------
+# Nhom C: cach ly
+# ---------------------------------------------------------------------------
+def inject_group_c(cfg, date, day):
+    """Cai C1 (customer_id rong), C2 (quantity <= 0), C3 (san pham khong ton tai)."""
+    rates = cfg["error_rates"]
+    rng = make_rng(cfg["seed"], f"group_c:{date}")
+    orders, items = day["orders"], day["order_items"]
+
+    code = "C1_missing_customer_id"
+    pool = [r for r in random_error_pool(orders) if code not in r.errors]
+    for r in pick_rows(rng, pool, count_for(rates[code], n_new_orders(day)) - already(orders, code)):
+        r.add_error(code)
+
+    item_pool = [r for r in items if r.values["order_id"] not in SHOWCASE_IDS]
+    n_items = len(items)
+
+    code = "C2_quantity_non_positive"
+    for r in pick_rows(rng, item_pool, count_for(rates[code], n_items)):
+        r.values["quantity"] = rng.choice([0, -1, -2])
+        r.add_error(code)
+
+    code = "C3_unknown_product"
+    pool = [r for r in item_pool if not r.errors]
+    for r in pick_rows(rng, pool, count_for(rates[code], n_items)):
+        r.values["product_id"] = f"P-{rng.randint(900, 999)}"
+        r.add_error(code)
+
+
+# ---------------------------------------------------------------------------
 # Lap bo du lieu (dong landing + loi) cho moi ngay
 # ---------------------------------------------------------------------------
 def build_dataset(cfg):
@@ -495,6 +524,7 @@ def build_dataset(cfg):
     for date in cfg["dates"]:
         inject_group_a(cfg, date, dataset[date])
         inject_group_b(cfg, date, dataset[date])
+        inject_group_c(cfg, date, dataset[date])
     return dataset
 
 
