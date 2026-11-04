@@ -183,7 +183,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_master` pass.
 
-- [ ] **T29. Chuẩn hóa orders theo v1** (P3)
+- [x] **T29. Chuẩn hóa orders theo v1** (P3)
   - Việc: lowercase `status`; chỉ parse `YYYY-MM-DD` và số thuần.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_orders_v1` pass.

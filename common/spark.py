@@ -30,8 +30,8 @@ def get_spark(app_name="sales_lakehouse"):
         .config("spark.jars.excludes", JARS_EXCLUDES)
         .config("spark.ui.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")
-        # gio metadata hien thi theo UTC cho de so sanh giua cac may
-        .config("spark.sql.session.timeZone", "UTC")
+        # khong dat session timeZone: Spark va Python cung dung mui gio may,
+        # nen chuoi 'YYYY-MM-DD HH:MM:SS' doc vao va collect ra giu nguyen gio
     )
     spark = configure_spark_with_delta_pip(builder).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")

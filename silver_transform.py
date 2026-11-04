@@ -50,3 +50,41 @@ def normalize_customers(df):
         clean_string("city").alias("city"),
         *metadata(df),
     )
+
+
+ISO_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+PLAIN_NUMBER_PATTERN = r"^\d+$"
+TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
+
+
+def parse_date(col, pattern, fmt):
+    """Parse ngay neu khop regex; khong khop hoac ngay khong ton tai -> NULL."""
+    return F.when(col.rlike(pattern), F.to_date(F.try_to_timestamp(col, F.lit(fmt))))
+
+
+def parse_order_date(col_name, rules_version):
+    """order_date -> date. v1: chi YYYY-MM-DD."""
+    c = clean_string(col_name)
+    return parse_date(c, ISO_DATE_PATTERN, "yyyy-MM-dd")
+
+
+def parse_amount(col_name, rules_version):
+    """total_amount -> long. v1: chi so thuan."""
+    c = clean_string(col_name)
+    return F.when(c.rlike(PLAIN_NUMBER_PATTERN), c.try_cast("long"))
+
+
+def normalize_orders(df, rules_version):
+    """orders: ep kieu theo rules_version, lowercase status/channel."""
+    promo = clean_string("promo_code") if "promo_code" in df.columns else F.lit(None).cast("string")
+    return df.select(
+        clean_string("order_id").alias("order_id"),
+        clean_string("customer_id").alias("customer_id"),
+        parse_order_date("order_date", rules_version).alias("order_date"),
+        parse_amount("total_amount", rules_version).alias("total_amount"),
+        F.lower(clean_string("status")).alias("status"),
+        F.lower(clean_string("channel")).alias("channel"),
+        F.try_to_timestamp(clean_string("updated_at"), F.lit(TIMESTAMP_FORMAT)).alias("updated_at"),
+        promo.alias("promo_code"),
+        *metadata(df),
+    )
