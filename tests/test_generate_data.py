@@ -220,3 +220,41 @@ def test_group_a_a4_email_case(cfg, dataset):
             assert len(same) == 2
             emails = [r.to_raw(gd.CUSTOMER_COLUMNS)["email"] for r in same]
             assert emails[0] != emails[1] and emails[0].lower() == emails[1].lower()
+
+
+# ---------------------------------------------------------------- T11 nhom B
+def test_group_b_b1_cross_channel(cfg, dataset):
+    """B1: cung order_id o 2 kenh khac nhau, updated_at khac nhau."""
+    n = cfg["volume"]["orders_per_day"]
+    for date in cfg["dates"]:
+        copies = error_rows(dataset, date, "orders", "B1_dup_cross_channel")
+        assert len(copies) == expected_count(cfg, "B1_dup_cross_channel", n)
+        for c in copies:
+            same = rows_of(dataset, date, "orders", c.values["order_id"])
+            assert len(same) == 2
+            assert same[0].channel != same[1].channel
+            assert same[0].values["channel"] != same[1].values["channel"]
+            assert same[0].values["updated_at"] != same[1].values["updated_at"]
+
+
+def test_group_b_b2_same_updated_at(cfg, dataset):
+    """B2: dung 5 cap, cung updated_at, khac status, o 2 tep khac nhau."""
+    for date in cfg["dates"]:
+        copies = error_rows(dataset, date, "orders", "B2_dup_same_updated_at")
+        assert len(copies) == 5
+        for c in copies:
+            same = rows_of(dataset, date, "orders", c.values["order_id"])
+            assert len(same) == 2
+            a, b = same
+            assert a.channel != b.channel
+            assert a.values["updated_at"] == b.values["updated_at"]
+            assert a.values["status"] != b.values["status"]
+            assert b.values["status"] in cfg["status_weights"]
+
+
+def test_group_b_sources_have_no_other_errors(cfg, dataset):
+    """Cap trung B (tru ORD-1001) chi mang loi B, de minh hoa loai trung ro rang."""
+    for date in cfg["dates"]:
+        for r in dataset[date]["orders"]:
+            if "b_source" in r.tags:
+                assert r.errors == []

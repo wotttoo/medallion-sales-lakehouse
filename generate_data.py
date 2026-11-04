@@ -5,6 +5,7 @@ Chay: python generate_data.py [--output-dir DIR]
 """
 
 import random
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
 from common.config import load_config
@@ -408,6 +409,60 @@ def inject_group_a(cfg, date, day):
 
 
 # ---------------------------------------------------------------------------
+# Nhom B: loai trung
+# ---------------------------------------------------------------------------
+def shift_time(ts, minutes):
+    """Cong/tru so phut vao chuoi 'YYYY-MM-DD HH:MM:SS'."""
+    t = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S") + timedelta(minutes=minutes)
+    return t.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def make_dup_copy(source, channel, code):
+    """Tao ban sao cua don o kenh khac, danh dau ma loi code."""
+    copy = LandingRow("orders", dict(source.values), channel=channel)
+    copy.clean = dict(source.clean)
+    copy.values["channel"] = channel
+    copy.add_error(code)
+    copy.tags.add("dup_copy")
+    source.tags.add("b_source")
+    return copy
+
+
+def inject_group_b(cfg, date, day):
+    """Cai B1 (trung khac kenh, updated_at khac) va B2 (trung cung updated_at)."""
+    rates = cfg["error_rates"]
+    rng = make_rng(cfg["seed"], f"group_b:{date}")
+    orders = day["orders"]
+    channels = list(cfg["channels"])
+    n = n_new_orders(day)
+
+    def clean_pool():
+        return [r for r in random_error_pool(orders) if not r.errors]
+
+    # B1: cung order_id o 2 kenh, updated_at lech vai chuc phut (truoc hoac sau)
+    code = "B1_dup_cross_channel"
+    copies = []
+    for src in pick_rows(rng, clean_pool(), count_for(rates[code], n) - already(orders, code)):
+        channel = rng.choice([c for c in channels if c != src.channel])
+        copy = make_dup_copy(src, channel, code)
+        minutes = rng.choice([-1, 1]) * rng.randint(5, 60)
+        copy.values["updated_at"] = shift_time(src.values["updated_at"], minutes)
+        copies.append(copy)
+    orders.extend(copies)
+
+    # B2: dung N cap, updated_at giong het, status khac -> can tie-breaker
+    code = "B2_dup_same_updated_at"
+    copies = []
+    for src in pick_rows(rng, clean_pool(), rates["B2_dup_same_updated_at_pairs"]):
+        channel = rng.choice([c for c in channels if c != src.channel])
+        copy = make_dup_copy(src, channel, code)
+        copy.values["status"] = rng.choice(
+            [s for s in cfg["status_weights"] if s != src.values["status"]])
+        copies.append(copy)
+    orders.extend(copies)
+
+
+# ---------------------------------------------------------------------------
 # Lap bo du lieu (dong landing + loi) cho moi ngay
 # ---------------------------------------------------------------------------
 def build_dataset(cfg):
@@ -439,6 +494,7 @@ def build_dataset(cfg):
 
     for date in cfg["dates"]:
         inject_group_a(cfg, date, dataset[date])
+        inject_group_b(cfg, date, dataset[date])
     return dataset
 
 

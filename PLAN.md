@@ -89,7 +89,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_a` pass.
 
-- [ ] **T11. Cài lỗi nhóm B**
+- [x] **T11. Cài lỗi nhóm B**
   - Việc: cài B1; cài đúng 5 cặp B2 cùng `updated_at`, khác `status`, hai dòng phải ở hai tệp khác nhau để tie-breaker có tác dụng.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_b` pass.
