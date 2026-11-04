@@ -245,7 +245,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
 
 ## M5. Gold, kiểm tra và run log
 
-- [ ] **T41. Các bảng dim** (P4)
+- [x] **T41. Các bảng dim** (P4)
   - Việc: ghi đè `gold.dim_customer`, `gold.dim_product`, `gold.dim_date`.
   - File: `gold_build.py`, `tests/test_gold.py`
   - Xong khi: `pytest tests/test_gold.py -k dims` pass.
