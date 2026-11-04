@@ -178,7 +178,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_rules.py`, `tests/test_quality_rules.py`
   - Xong khi: `pytest tests/test_quality_rules.py` pass.
 
-- [ ] **T28. Chuẩn hóa products và customers** (P3)
+- [x] **T28. Chuẩn hóa products và customers** (P3)
   - Việc: ép kiểu, trim, lowercase `email`.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_master` pass.
