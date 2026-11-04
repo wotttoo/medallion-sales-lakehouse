@@ -107,3 +107,61 @@ def test_clean_orders_reference_known_customers(cfg, master, clean_orders):
     for date in cfg["dates"]:
         known |= {c["customer_id"] for c in master[date]["customers"]}
         assert {o["order"]["customer_id"] for o in clean_orders[date]} <= known
+
+
+# ---------------------------------------------------------------- T09 showcase
+@pytest.fixture(scope="module")
+def dataset(cfg):
+    """Bo du lieu day du (dong landing + loi)."""
+    return gd.build_dataset(cfg)
+
+
+def rows_of(dataset, date, entity, order_id=None):
+    """Loc dong theo order_id."""
+    rows = dataset[date][entity]
+    if order_id is None:
+        return rows
+    return [r for r in rows if r.values.get("order_id") == order_id]
+
+
+def test_showcase_ord_1001(cfg, dataset):
+    """ORD-1001: C-017, 150000, delivered, co o ca web va app."""
+    day1 = cfg["dates"][0]
+    rows = rows_of(dataset, day1, "orders", "ORD-1001")
+    assert sorted(r.channel for r in rows) == ["app", "web"]
+    web = next(r for r in rows if r.channel == "web")
+    app = next(r for r in rows if r.channel == "app")
+    for r in rows:
+        raw = r.to_raw(gd.ORDER_COLUMNS)
+        assert raw["customer_id"] == "C-017"
+        assert raw["order_date"] == "2026-10-19"
+        assert raw["total_amount"] == "150000"
+        assert raw["status"] == "delivered"
+    assert app.values["updated_at"] > web.values["updated_at"]
+    assert "B1_dup_cross_channel" in app.errors
+    items = rows_of(dataset, day1, "order_items", "ORD-1001")
+    assert sum(i.values["quantity"] * i.values["unit_price"] for i in items) == 150_000
+
+
+def test_showcase_ord_1002(cfg, dataset):
+    """ORD-1002: partner, customer_id rong, 19/10/2026, 150.000đ, shipping."""
+    day1 = cfg["dates"][0]
+    rows = rows_of(dataset, day1, "orders", "ORD-1002")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.channel == "partner"
+    raw = r.to_raw(gd.ORDER_COLUMNS)
+    assert raw["customer_id"] == ""
+    assert raw["order_date"] == "19/10/2026"
+    assert raw["total_amount"] == "150.000đ"
+    assert raw["status"] == "shipping"
+    assert {"C1_missing_customer_id", "A1_date_ddmmyyyy", "A2_amount_vnd_string"} <= set(r.errors)
+    items = rows_of(dataset, day1, "order_items", "ORD-1002")
+    assert sum(i.values["quantity"] * i.values["unit_price"] for i in items) == 150_000
+
+
+def test_showcase_clean_values_kept(cfg, dataset):
+    """Ban sach cua ORD-1002 van duoc luu de answer key dung."""
+    r = rows_of(dataset, cfg["dates"][0], "orders", "ORD-1002")[0]
+    assert r.clean["order_date"] == "2026-10-19"
+    assert r.clean["total_amount"] == 150_000

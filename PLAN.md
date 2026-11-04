@@ -79,7 +79,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k clean_orders` pass.
 
-- [ ] **T09. Bản ghi minh họa**
+- [x] **T09. Bản ghi minh họa**
   - Việc: tạo thủ công ORD-1001 và ORD-1002 theo SPEC 6.4, kèm order_items nhất quán. Lưu bản sạch cùng danh sách lỗi đã cài để answer key dùng.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k showcase` pass.

@@ -65,6 +65,34 @@ class LandingRow:
     values: dict
     errors: list = field(default_factory=list)
     channel: str = None          # chi dung cho orders: tep kenh nao
+    raw: dict = field(default_factory=dict)    # chuoi ghi de khi ghi tep (loi dinh dang)
+    clean: dict = None           # gia tri sach truoc khi cai loi
+
+    def __post_init__(self):
+        """Luu ban sach ngay khi tao dong."""
+        if self.clean is None:
+            self.clean = dict(self.values)
+
+    def add_error(self, code, **raw_overrides):
+        """Ghi nhan mot ma loi va (neu co) chuoi ghi de cho cot."""
+        if code not in self.errors:
+            self.errors.append(code)
+        self.raw.update(raw_overrides)
+
+    def to_raw(self, columns):
+        """Doi dong thanh dict chuoi theo dung thu tu cot (dung khi ghi tep)."""
+        out = {}
+        for col in columns:
+            if col in self.raw:
+                out[col] = self.raw[col]
+            else:
+                v = self.values.get(col)
+                out[col] = "" if v is None else str(v)
+        return out
+
+
+# don minh hoa dung trong reading (SPEC 6.4)
+SHOWCASE_IDS = ("ORD-1001", "ORD-1002")
 
 
 # ---------------------------------------------------------------------------
@@ -232,14 +260,97 @@ def make_clean_orders(cfg, master):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Ban ghi minh hoa (tao thu cong, khong ngau nhien)
+# ---------------------------------------------------------------------------
+def make_showcase_orders(date):
+    """Tra ve ORD-1001 va ORD-1002 dung nhu reading (gia tri sach)."""
+    ord_1001 = {
+        "order": {"order_id": "ORD-1001", "customer_id": "C-017", "order_date": date,
+                  "total_amount": 150_000, "status": "delivered", "channel": "web",
+                  "updated_at": f"{date} 09:15:00"},
+        "items": [{"order_id": "ORD-1001", "product_id": "P-001", "quantity": 3,
+                   "unit_price": 50_000}],
+    }
+    ord_1002 = {
+        "order": {"order_id": "ORD-1002", "customer_id": "C-042", "order_date": date,
+                  "total_amount": 150_000, "status": "shipping", "channel": "partner",
+                  "updated_at": f"{date} 10:05:00"},
+        "items": [{"order_id": "ORD-1002", "product_id": "P-002", "quantity": 2,
+                   "unit_price": 75_000}],
+    }
+    return [ord_1001, ord_1002]
+
+
+def format_ddmmyyyy(iso_date):
+    """'2026-10-19' -> '19/10/2026' (loi A1)."""
+    y, m, d = iso_date.split("-")
+    return f"{d}/{m}/{y}"
+
+
+def format_vnd(amount):
+    """150000 -> '150.000đ' (loi A2)."""
+    return f"{amount:,}".replace(",", ".") + "đ"
+
+
+def apply_showcase(rows_orders):
+    """Cai loi co dinh cho don minh hoa ngay 1.
+
+    ORD-1001: xuat hien o ca web va app (B1), dong app co updated_at sau.
+    ORD-1002: kenh partner, dinh C1 + A1 + A2.
+    rows_orders: list LandingRow orders cua ngay 1 (da co ban goc).
+    """
+    by_id = {r.values["order_id"]: r for r in rows_orders}
+    web_1001 = by_id["ORD-1001"]
+    copy = LandingRow("orders", dict(web_1001.values), channel="app")
+    copy.clean = dict(web_1001.clean)
+    copy.values["channel"] = "app"
+    copy.values["updated_at"] = web_1001.values["updated_at"].replace("09:15:00", "09:20:00")
+    copy.add_error("B1_dup_cross_channel")
+    rows_orders.append(copy)
+
+    r = by_id["ORD-1002"]
+    r.add_error("C1_missing_customer_id", customer_id="")
+    r.add_error("A1_date_ddmmyyyy", order_date=format_ddmmyyyy(r.values["order_date"]))
+    r.add_error("A2_amount_vnd_string", total_amount=format_vnd(r.values["total_amount"]))
+
+
+# ---------------------------------------------------------------------------
+# Lap bo du lieu (dong landing + loi) cho moi ngay
+# ---------------------------------------------------------------------------
+def build_dataset(cfg):
+    """Sinh toan bo dong landing cho moi ngay, kem danh sach loi da cai.
+
+    Tra ve dict date -> {"orders": [...], "order_items": [...],
+    "customers": [...], "products": [...]} voi phan tu la LandingRow.
+    """
+    master = make_master_data(cfg)
+    clean_orders = make_clean_orders(cfg, master)
+    first_date = cfg["dates"][0]
+    # thay hai don dau ngay 1 bang don minh hoa
+    clean_orders[first_date][:2] = make_showcase_orders(first_date)
+
+    dataset = {}
+    for date in cfg["dates"]:
+        day = {
+            "products": [LandingRow("products", dict(p)) for p in master[date]["products"]],
+            "customers": [LandingRow("customers", dict(c)) for c in master[date]["customers"]],
+            "orders": [LandingRow("orders", dict(o["order"]), channel=o["order"]["channel"])
+                       for o in clean_orders[date]],
+            "order_items": [LandingRow("order_items", dict(i))
+                            for o in clean_orders[date] for i in o["items"]],
+        }
+        dataset[date] = day
+    apply_showcase(dataset[first_date]["orders"])
+    return dataset
+
+
 def main():
     """Diem vao dong lenh (hoan thien o cac task sau)."""
     cfg = load_config()
-    master = make_master_data(cfg)
-    orders = make_clean_orders(cfg, master)
-    for date, data in master.items():
-        print(date, len(data["products"]), "products,", len(data["customers"]),
-              "customers,", len(orders[date]), "orders")
+    dataset = build_dataset(cfg)
+    for date, day in dataset.items():
+        print(date, {entity: len(rows) for entity, rows in day.items()})
 
 
 if __name__ == "__main__":
