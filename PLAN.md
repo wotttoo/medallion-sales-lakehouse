@@ -161,7 +161,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k append_and_skip` pass (chạy lại không thêm dòng).
 
-- [ ] **T25. CLI run_pipeline cho Bronze**
+- [x] **T25. CLI run_pipeline cho Bronze**
   - Việc: dựng `run_pipeline.py` với `--processing-date`, `--layer bronze`, ghi run log, trả exit code khác 0 khi fail.
   - File: `run_pipeline.py`
   - Xong khi: `python run_pipeline.py --processing-date 2026-10-19 --layer bronze` trả exit code 0.

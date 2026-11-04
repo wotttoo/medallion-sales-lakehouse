@@ -29,6 +29,7 @@ def get_spark(app_name="sales_lakehouse"):
         .config("spark.sql.shuffle.partitions", "4")
         .config("spark.jars.excludes", JARS_EXCLUDES)
         .config("spark.ui.enabled", "false")
+        .config("spark.ui.showConsoleProgress", "false")
         # gio metadata hien thi theo UTC cho de so sanh giua cac may
         .config("spark.sql.session.timeZone", "UTC")
     )
