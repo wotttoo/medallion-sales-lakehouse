@@ -285,7 +285,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k conservation` pass.
 
-- [ ] **T49. Check quarantine_rate** (P4)
+- [x] **T49. Check quarantine_rate** (P4)
   - Việc: fail khi tỷ lệ cách ly của lô chạm `quarantine_rate_threshold`.
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k quarantine_rate` pass.

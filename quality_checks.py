@@ -29,3 +29,23 @@ def check_record_conservation(entity_stats):
     if broken:
         raise QualityCheckError(f"record_conservation that bai: {broken}")
     return {"record_conservation": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# quarantine_rate
+# ---------------------------------------------------------------------------
+def check_quarantine_rate(entity_stats, threshold):
+    """Ty le cach ly cua lo (moi thuc the) phai < threshold; cham nguong thi fail."""
+    # BEGIN SOLUTION
+    rates, broken = {}, {}
+    for entity, s in entity_stats.items():
+        if s["n_input"] == 0:
+            continue
+        rate = s["n_quarantined"] / s["n_input"]
+        rates[entity] = round(rate, 4)
+        if rate >= threshold:
+            broken[entity] = round(rate, 4)
+    # END SOLUTION
+    if broken:
+        raise QualityCheckError(f"quarantine_rate >= {threshold}: {broken}")
+    return {"quarantine_rate": rates}

@@ -24,3 +24,18 @@ def test_conservation_violation_raises():
     with pytest.raises(qc.QualityCheckError, match="order_items"):
         qc.check_record_conservation({"orders": stats(10, 7, 2, 1),
                                       "order_items": stats(10, 7, 2, 0)})
+
+
+# ---------------------------------------------------------------- T49 quarantine_rate
+def test_quarantine_rate_below_threshold_ok():
+    """Duoi nguong thi tra ve ty le tung thuc the; thuc the rong bi bo qua."""
+    out = qc.check_quarantine_rate({"orders": stats(100, 90, 9, 1),
+                                    "products": stats(0, 0, 0, 0)}, 0.10)
+    assert out == {"quarantine_rate": {"orders": 0.09}}
+
+
+@pytest.mark.parametrize("n_quarantined", [10, 30])
+def test_quarantine_rate_at_or_above_threshold_fails(n_quarantined):
+    """Cham (=) hoac vuot nguong thi raise."""
+    with pytest.raises(qc.QualityCheckError, match="orders"):
+        qc.check_quarantine_rate({"orders": stats(100, 100 - n_quarantined, n_quarantined, 0)}, 0.10)
