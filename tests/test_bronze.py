@@ -6,6 +6,7 @@ import pytest
 
 import bronze_ingest as bi
 import generate_data
+from common import run_log
 from common.config import load_config
 
 
@@ -109,3 +110,60 @@ def test_read_as_string_ingest_time_increases():
     t2 = bi.next_ingest_time(t1)
     t3 = bi.next_ingest_time(t2 + bi.timedelta(seconds=5))
     assert t1 < t2 < t3
+
+
+# ---------------------------------------------------------------- T24 append + skip
+@pytest.fixture()
+def fresh_cfg(generated, tmp_path):
+    """Config voi lakehouse rieng cho tung test."""
+    out, _ = generated
+    return load_config(landing_dir=out / "landing", lakehouse_dir=tmp_path / "lh")
+
+
+def bronze_counts(spark, cfg):
+    """So dong moi bang Bronze."""
+    return {e: bi.read_bronze(spark, cfg, e).count() for e in bi.ENTITY_ORDER}
+
+
+def test_append_and_skip_rerun_adds_nothing(spark, fresh_cfg, generated):
+    """Nap ngay 1 dung so dong; chay lai bo qua toan bo tep, khong them dong."""
+    _, key = generated
+    first = bi.ingest_date(spark, fresh_cfg, "2026-10-19")
+    assert first["_batch_id"] == "b-0001"
+    assert first["skipped_files"] == []
+    expected = key["days"]["2026-10-19"]["landing_counts"]
+    assert bronze_counts(spark, fresh_cfg) == expected
+    assert first["n_input"] == sum(expected.values())
+
+    second = bi.ingest_date(spark, fresh_cfg, "2026-10-19")
+    assert second["_batch_id"] is None
+    assert second["input_files"] == []
+    assert len(second["skipped_files"]) == 6
+    assert bronze_counts(spark, fresh_cfg) == expected
+    assert run_log.read_ingested_files(spark, fresh_cfg).count() == 6
+
+
+def test_append_and_skip_batch_ids_increase(spark, fresh_cfg):
+    """Moi lan nap tep moi sinh _batch_id moi b-0001, b-0002; metadata dung."""
+    bi.ingest_date(spark, fresh_cfg, "2026-10-19")
+    r2 = bi.ingest_date(spark, fresh_cfg, "2026-10-20")
+    assert r2["_batch_id"] == "b-0002"
+    df = bi.read_bronze(spark, fresh_cfg, "orders")
+    assert {r["_batch_id"] for r in df.select("_batch_id").distinct().collect()} == {"b-0001", "b-0002"}
+    assert df.columns[-3:] == ["_ingest_time", "_source_file", "_batch_id"]
+    files = run_log.read_ingested_files(spark, fresh_cfg).where("_batch_id = 'b-0002'").collect()
+    assert {f["file_path"] for f in files} >= {"2026-10-20/orders/web_2026-10-20.csv"}
+
+
+def test_append_and_skip_bad_file_fails_without_writing(spark, generated, tmp_path):
+    """Mot tep loi thi lan chay fail, khong ghi gi vao Bronze."""
+    import shutil
+    out, _ = generated
+    landing = tmp_path / "landing"
+    shutil.copytree(out / "landing" / "2026-10-19", landing / "2026-10-19")
+    (landing / "2026-10-19" / "products_2026-10-19.csv").write_text("", encoding="utf-8")
+    cfg = load_config(landing_dir=landing, lakehouse_dir=tmp_path / "lh")
+    with pytest.raises(bi.FileCheckError, match="products_2026-10-19.csv"):
+        bi.ingest_date(spark, cfg, "2026-10-19")
+    assert run_log.read_ingested_files(spark, cfg).count() == 0
+    assert not (tmp_path / "lh" / "bronze").exists()

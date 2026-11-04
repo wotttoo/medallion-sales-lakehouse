@@ -156,7 +156,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k read_as_string` pass.
 
-- [ ] **T24. Ghi Bronze**
+- [x] **T24. Ghi Bronze**
   - Việc: append với `mergeSchema`, sinh `_batch_id` dạng `b-0001`, bỏ qua tệp đã nạp, cập nhật `ingested_files`. Cần T20.
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k append_and_skip` pass (chạy lại không thêm dòng).

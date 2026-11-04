@@ -138,3 +138,10 @@ def successful_batches(spark, cfg, layer):
     """Tap _batch_id da chay thanh cong o mot layer."""
     df = read_run_log(spark, cfg).where(f"layer = '{layer}' AND status = 'success'")
     return {r["_batch_id"] for r in df.select("_batch_id").distinct().collect() if r["_batch_id"]}
+
+
+def table_version(spark, path):
+    """Phien ban Delta moi nhat cua bang (None neu chua co bang)."""
+    if not table_exists(spark, path):
+        return None
+    return DeltaTable.forPath(spark, str(path)).history(1).select("version").collect()[0][0]

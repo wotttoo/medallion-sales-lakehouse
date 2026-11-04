@@ -9,12 +9,15 @@ Quy tac Bronze (SPEC 7.2):
 import csv
 import json
 from datetime import timedelta
+from functools import reduce
 from pathlib import Path
 
 from pyspark.sql import functions as F
 
 from common.config import resolve_path
-from common.run_log import utc_now
+from common.paths import table_uri
+from common.run_log import (ingested_file_names, read_ingested_files, record_ingested_files,
+                            table_version, utc_now)
 
 # thu tu nap cac thuc the trong mot lo
 ENTITY_ORDER = ["products", "customers", "orders", "order_items"]
@@ -153,3 +156,87 @@ def read_file_as_strings(spark, file_info, ingest_time):
     df = df.select([F.col(c).cast("string").alias(c) for c in base + extra])
     return (df.withColumn("_ingest_time", F.lit(ingest_time).cast("timestamp"))
               .withColumn("_source_file", F.lit(file_info["file_name"])))
+
+
+# ---------------------------------------------------------------------------
+# Ghi Bronze
+# ---------------------------------------------------------------------------
+def bronze_table_name(entity):
+    """Ten logic bang Bronze cua thuc the (vd bronze.orders_raw)."""
+    return f"bronze.{entity}_raw"
+
+
+def next_batch_id(spark, cfg):
+    """_batch_id tiep theo dang b-0001, tang dan theo ingested_files."""
+    ids = [r["_batch_id"] for r in
+           read_ingested_files(spark, cfg).select("_batch_id").distinct().collect()]
+    last = max((int(i.split("-")[1]) for i in ids), default=0)
+    return f"b-{last + 1:04d}"
+
+
+def landing_relative_path(cfg, path):
+    """Duong dan tep tinh tu thu muc landing (dang posix, de may nao cung giong)."""
+    root = resolve_path(cfg, "landing")
+    try:
+        return Path(path).relative_to(root).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
+def ingest_date(spark, cfg, date):
+    """Nap cac tep moi cua mot ngay vao Bronze trong mot lo.
+
+    Tra ve dict: _batch_id (None neu khong co tep moi), input_files, skipped_files,
+    row_counts (theo bang), n_input, delta_versions_written.
+    """
+    files = list_landing_files(cfg, date)
+    done = ingested_file_names(spark, cfg)
+    new_files = [f for f in files if f["file_name"] not in done]
+    result = {"processing_date": date, "_batch_id": None,
+              "input_files": [f["file_name"] for f in new_files],
+              "skipped_files": [f["file_name"] for f in files if f["file_name"] in done],
+              "row_counts": {}, "n_input": 0, "delta_versions_written": {}}
+    if not new_files:
+        return result
+
+    # kiem tra TAT CA tep truoc khi ghi: mot tep loi thi ca lan chay fail
+    expected_rows = {f["file_name"]: check_file(f) for f in new_files}
+    batch_id = next_batch_id(spark, cfg)
+    result["_batch_id"] = batch_id
+
+    frames, ingest_time = {}, None
+    for f in new_files:
+        ingest_time = next_ingest_time(ingest_time)
+        df = read_file_as_strings(spark, f, ingest_time)
+        n = df.count()
+        if n != expected_rows[f["file_name"]]:
+            raise FileCheckError(f"Tep {f['file_name']}: Spark doc {n} dong, "
+                                 f"kiem tra muc tep dem {expected_rows[f['file_name']]}")
+        frames.setdefault(f["entity"], []).append(df)
+
+    for entity in ENTITY_ORDER:
+        if entity not in frames:
+            continue
+        df = reduce(lambda a, b: a.unionByName(b, allowMissingColumns=True), frames[entity])
+        df = df.withColumn("_batch_id", F.lit(batch_id))
+        name = bronze_table_name(entity)
+        path = table_uri(name, cfg)
+        (df.write.format("delta").mode("append").option("mergeSchema", "true").save(path))
+        result["row_counts"][name] = sum(expected_rows[f["file_name"]] for f in new_files
+                                         if f["entity"] == entity)
+        result["delta_versions_written"][name] = table_version(spark, path)
+
+    record_ingested_files(spark, cfg, [
+        {"file_name": f["file_name"], "file_path": landing_relative_path(cfg, f["path"]),
+         "entity": f["entity"], "file_date": date, "_batch_id": batch_id,
+         "row_count": expected_rows[f["file_name"]]} for f in new_files])
+    result["n_input"] = sum(expected_rows.values())
+    return result
+
+
+def read_bronze(spark, cfg, entity, batch_id=None):
+    """Doc bang Bronze cua thuc the (tuy chon loc theo lo)."""
+    df = spark.read.format("delta").load(table_uri(bronze_table_name(entity), cfg))
+    if batch_id is not None:
+        df = df.where(F.col("_batch_id") == batch_id)
+    return df
