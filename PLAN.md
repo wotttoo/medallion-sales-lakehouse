@@ -344,7 +344,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_rules.py`, `silver_transform.py`, `gold_build.py`, `quality_checks.py`
   - Xong khi: `grep -c "BEGIN SOLUTION" silver_transform.py gold_build.py quality_rules.py quality_checks.py` mỗi file ra ít nhất 1 và `pytest tests/` vẫn pass.
 
-- [ ] **T60. Sinh bản học viên** (P6)
+- [x] **T60. Sinh bản học viên** (P6)
   - Việc: `tools/make_student_version.py` tạo `student/`, thay mỗi khối bằng `# TODO: ...`, gợi ý tiếng Việt không dấu và `raise NotImplementedError`.
   - File: `tools/make_student_version.py`, `tests/test_student_version.py`
   - Xong khi: `pytest tests/test_student_version.py` pass (không còn marker, `python -m compileall student` thành công).
