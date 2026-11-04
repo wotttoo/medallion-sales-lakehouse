@@ -208,7 +208,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k dedup` pass (gồm các cặp B2).
 
-- [ ] **T34. MERGE vào Silver**
+- [x] **T34. MERGE vào Silver**
   - Việc: MERGE theo khóa, orders chỉ update khi `updated_at` mới hơn hoặc bằng.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k merge` pass (T1 cập nhật, bản cũ hơn không ghi đè).

@@ -9,9 +9,12 @@ Trinh tu cho moi thuc the, moi lo:
 Thu tu thuc the: products -> customers -> orders -> order_items.
 """
 
+from delta.tables import DeltaTable
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
+from common.paths import table_uri
+from common.run_log import table_version
 from quality_rules import rules_for
 
 # cot metadata tu Bronze, giu lai qua cac buoc
@@ -219,3 +222,57 @@ def deduplicate(valid, entity):
                  .where(F.col("_rn") == 1)
                  .drop("_rn"))
     # END SOLUTION
+
+
+# ---------------------------------------------------------------------------
+# Buoc 5: MERGE vao Silver
+# ---------------------------------------------------------------------------
+SILVER_COLUMNS = {
+    "products": ["product_id", "name", "category", "list_price"],
+    "customers": ["customer_id", "name", "email", "phone", "city"],
+    "orders": ["order_id", "customer_id", "order_date", "total_amount", "status",
+               "channel", "updated_at", "promo_code"],
+    "order_items": ["order_id", "product_id", "quantity", "unit_price", "line_amount"],
+}
+
+
+def silver_table_name(entity):
+    """Ten logic bang Silver (vd silver.orders)."""
+    return f"silver.{entity}"
+
+
+def silver_columns(entity):
+    """Cot cua bang Silver: cot nghiep vu + metadata nguon goc."""
+    return SILVER_COLUMNS[entity] + METADATA_COLUMNS
+
+
+def ensure_delta_table(spark, path, schema):
+    """Tao bang Delta rong voi schema neu chua co."""
+    if not DeltaTable.isDeltaTable(spark, path):
+        spark.createDataFrame([], schema).write.format("delta").save(path)
+
+
+def merge_into_silver(spark, cfg, entity, deduped):
+    """MERGE tap da loai trung vao silver.<entity> theo khoa; tra ve phien ban Delta.
+
+    orders: chi update khi updated_at nguon moi hon hoac bang (ban cu khong ghi de ban moi).
+    Thuc the khac: lo moi nhat thang.
+    """
+    source = deduped.select(silver_columns(entity))
+    path = table_uri(silver_table_name(entity), cfg)
+    ensure_delta_table(spark, path, source.schema)
+    # BEGIN SOLUTION
+    condition = " AND ".join(f"t.{k} = s.{k}" for k in ENTITY_KEYS[entity])
+    merge = DeltaTable.forPath(spark, path).alias("t").merge(source.alias("s"), condition)
+    if entity == "orders":
+        merge = merge.whenMatchedUpdateAll(condition="s.updated_at >= t.updated_at")
+    else:
+        merge = merge.whenMatchedUpdateAll()
+    merge.whenNotMatchedInsertAll().execute()
+    # END SOLUTION
+    return table_version(spark, path)
+
+
+def read_silver(spark, cfg, entity):
+    """Doc bang Silver cua thuc the."""
+    return spark.read.format("delta").load(table_uri(silver_table_name(entity), cfg))

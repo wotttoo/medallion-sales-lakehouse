@@ -240,3 +240,57 @@ def test_dedup_entities_without_updated_at(spark):
     out = {r["customer_id"]: r for r in st.deduplicate(st.normalize_customers(df), "customers").collect()}
     assert out["C-1"]["city"] == "Da Nang"
     assert out["C-2"]["email"] == "b@x.com" and len(out) == 2
+
+
+# ---------------------------------------------------------------- T34 MERGE
+@pytest.fixture()
+def tmp_cfg(tmp_path):
+    """Config voi lakehouse tam rieng cho tung test."""
+    from common.config import load_config
+    return load_config(lakehouse_dir=tmp_path / "lh")
+
+
+def order_batch(spark, rows, batch_id="b-0001"):
+    """Lo orders da chuan hoa (v2) tu cac tuple (order_id, status, updated_at)."""
+    data = [((oid, "C-1", "2026-10-19", "10", status, "web", ts), i, f"web_{batch_id}.csv")
+            for i, (oid, status, ts) in enumerate(rows)]
+    df = bronze_like_orders(spark, data).withColumn("_batch_id", st.F.lit(batch_id))
+    return st.normalize_orders(df, "v2")
+
+
+def silver_status(spark, cfg):
+    """dict order_id -> status trong silver.orders."""
+    return {r["order_id"]: r["status"] for r in st.read_silver(spark, cfg, "orders").collect()}
+
+
+def test_merge_t1_update_and_insert(spark, tmp_cfg):
+    """T1: ban moi hon cap nhat status; don moi duoc them."""
+    st.merge_into_silver(spark, tmp_cfg, "orders",
+                         order_batch(spark, [("ORD-1", "pending", "2026-10-19 10:00:00")]))
+    v = st.merge_into_silver(spark, tmp_cfg, "orders", order_batch(spark, [
+        ("ORD-1", "shipping", "2026-10-20 08:00:00"),
+        ("ORD-2", "pending", "2026-10-20 09:00:00")], "b-0002"))
+    assert silver_status(spark, tmp_cfg) == {"ORD-1": "shipping", "ORD-2": "pending"}
+    assert v >= 2
+    assert st.read_silver(spark, tmp_cfg, "orders").columns == st.silver_columns("orders")
+
+
+def test_merge_older_does_not_overwrite(spark, tmp_cfg):
+    """Ban cu hon khong ghi de ban moi; ban bang updated_at thi duoc cap nhat."""
+    st.merge_into_silver(spark, tmp_cfg, "orders",
+                         order_batch(spark, [("ORD-1", "shipping", "2026-10-20 08:00:00")]))
+    st.merge_into_silver(spark, tmp_cfg, "orders",
+                         order_batch(spark, [("ORD-1", "pending", "2026-10-19 10:00:00")], "b-0002"))
+    assert silver_status(spark, tmp_cfg) == {"ORD-1": "shipping"}
+    st.merge_into_silver(spark, tmp_cfg, "orders",
+                         order_batch(spark, [("ORD-1", "delivered", "2026-10-20 08:00:00")], "b-0003"))
+    assert silver_status(spark, tmp_cfg) == {"ORD-1": "delivered"}
+
+
+def test_merge_rerun_same_batch_is_idempotent(spark, tmp_cfg):
+    """MERGE lai cung mot lo khong them dong."""
+    batch = order_batch(spark, [("ORD-1", "pending", "2026-10-19 10:00:00"),
+                                ("ORD-2", "pending", "2026-10-19 11:00:00")])
+    st.merge_into_silver(spark, tmp_cfg, "orders", batch)
+    st.merge_into_silver(spark, tmp_cfg, "orders", batch)
+    assert st.read_silver(spark, tmp_cfg, "orders").count() == 2
