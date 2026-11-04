@@ -124,7 +124,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k key_counts` pass.
 
-- [ ] **T18. Answer key: kết quả v1 và v2**
+- [x] **T18. Answer key: kết quả v1 và v2**
   - Việc: ghi số hợp lệ, cách ly, trùng bị loại cho mỗi thực thể, mỗi ngày; danh sách `order_id` cách ly kèm quy tắc vi phạm.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k key_outcomes` pass.

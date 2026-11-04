@@ -539,3 +539,89 @@ def test_key_counts_all_codes_present(cfg, answer_key):
         assert set(answer_key["days"][d]["error_counts"]) == set(gd.ERROR_CODES)
     assert answer_key["days"][cfg["dates"][0]]["error_counts"]["T1_status_update_resend"] == 0
     assert answer_key["days"][cfg["dates"][2]]["error_counts"]["T3_schema_evolution"] > 0
+
+
+# ---------------------------------------------------------------- T18 answer key: ket qua v1/v2
+def read_order_rows(landing, d, channels):
+    """Doc moi dong don cua mot ngay tu tep landing, kem ten tep."""
+    rows = []
+    for ch, fmt in channels.items():
+        path = landing / d / "orders" / f"{ch}_{d}.{fmt}"
+        if fmt == "csv":
+            with path.open(encoding="utf-8", newline="") as f:
+                recs = list(csv.DictReader(f))
+        else:
+            recs = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+        rows += [dict(r, _source_file=path.name) for r in recs]
+    return rows
+
+
+def test_key_outcomes_conservation(cfg, answer_key):
+    """n_input = n_valid + n_quarantined + n_duplicates_removed cho moi thuc the."""
+    for d in cfg["dates"]:
+        for v in ["v1", "v2"]:
+            out = answer_key["days"][d]["outcomes"][v]
+            for entity, s in out["entities"].items():
+                assert s["n_input"] == s["n_valid"] + s["n_quarantined"] + s["n_duplicates_removed"]
+                assert s["n_input"] == answer_key["days"][d]["landing_counts"][entity]
+
+
+def test_key_outcomes_orders_quarantine_from_raw_files(cfg, landing, answer_key):
+    """Danh sach don cach ly khop voi viec doc truc tiep chuoi trong tep landing."""
+    for d in cfg["dates"]:
+        rows = read_order_rows(landing, d, cfg["channels"])
+        for v in ["v1", "v2"]:
+            expected = []
+            for r in rows:
+                failed = []
+                if not r["customer_id"]:
+                    failed.append("customer_id_not_null")
+                if v == "v1" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", r["order_date"]):
+                    failed.append("order_date_valid_format")
+                if v == "v1" and not re.fullmatch(r"\d+", str(r["total_amount"])):
+                    failed.append("total_amount_numeric")
+                if failed:
+                    expected.append((r["order_id"], r["_source_file"], "; ".join(failed)))
+            got = [(q["order_id"], q["source_file"], q["failed_rules"])
+                   for q in answer_key["days"][d]["outcomes"][v]["quarantined"]["orders"]]
+            assert sorted(got) == sorted(expected)
+            assert answer_key["days"][d]["outcomes"][v]["entities"]["orders"]["n_quarantined"] == len(expected)
+
+
+def test_key_outcomes_showcase_rules(cfg, answer_key):
+    """ORD-1002: v1 vi pham 3 quy tac, v2 chi con customer_id_not_null."""
+    d = cfg["dates"][0]
+    for v, rules in [("v1", "customer_id_not_null; order_date_valid_format; total_amount_numeric"),
+                     ("v2", "customer_id_not_null")]:
+        q = [x for x in answer_key["days"][d]["outcomes"][v]["quarantined"]["orders"]
+             if x["order_id"] == "ORD-1002"]
+        assert q == [{"order_id": "ORD-1002", "source_file": "partner_2026-10-19.json",
+                      "failed_rules": rules}]
+        items = [x for x in answer_key["days"][d]["outcomes"][v]["quarantined"]["order_items"]
+                 if x["order_id"] == "ORD-1002"]
+        assert [x["failed_rules"] for x in items] == ["order_exists"]
+
+
+def test_key_outcomes_duplicates(cfg, answer_key):
+    """Trung bi loai: orders = B1 + B2; customers = A4; v1 va v2 giong nhau."""
+    for d in cfg["dates"]:
+        day = answer_key["days"][d]
+        e = day["error_counts"]
+        for v in ["v1", "v2"]:
+            ent = day["outcomes"][v]["entities"]
+            assert ent["orders"]["n_duplicates_removed"] == e["B1_dup_cross_channel"] + e["B2_dup_same_updated_at"]
+            assert ent["customers"]["n_duplicates_removed"] == e["A4_email_case"]
+            assert ent["order_items"]["n_duplicates_removed"] == 0
+
+
+def test_key_outcomes_items_quarantine(cfg, answer_key):
+    """Moi dong C2/C3 deu bi cach ly; v2 cach ly it hon v1."""
+    for d in cfg["dates"]:
+        day = answer_key["days"][d]
+        e = day["error_counts"]
+        for v in ["v1", "v2"]:
+            q = day["outcomes"][v]["quarantined"]["order_items"]
+            assert sum("quantity_positive" in x["failed_rules"] for x in q) == e["C2_quantity_non_positive"]
+            assert sum("product_exists" in x["failed_rules"] for x in q) == e["C3_unknown_product"]
+        assert len(day["outcomes"]["v2"]["quarantined"]["order_items"]) < \
+            len(day["outcomes"]["v1"]["quarantined"]["order_items"])

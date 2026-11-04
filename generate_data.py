@@ -761,15 +761,136 @@ def error_counts(day):
     return counts
 
 
+# quy tac drop cua orders: ma loi -> ten quy tac, theo thu tu khai bao (SPEC 7.3)
+ORDER_DROP_RULES = {
+    "v1": [("C1_missing_customer_id", "customer_id_not_null"),
+           ("A1_date_ddmmyyyy", "order_date_valid_format"),
+           ("A2_amount_vnd_string", "total_amount_numeric")],
+    "v2": [("C1_missing_customer_id", "customer_id_not_null")],
+}
+ENTITY_KEYS = {"products": ("product_id",), "customers": ("customer_id",),
+               "orders": ("order_id",), "order_items": ("order_id", "product_id")}
+
+
+def source_file_of(cfg, date, row):
+    """Ten tep (= _source_file) chua dong landing."""
+    if row.entity == "orders":
+        return order_file_name(row.channel, date, cfg["channels"][row.channel])
+    return entity_file_name(row.entity, date)
+
+
+def row_key(row):
+    """Khoa nghiep vu cua dong."""
+    return tuple(row.values[c] for c in ENTITY_KEYS[row.entity])
+
+
+class ExpectedLakehouse:
+    """Mo hinh ket qua mong doi cua Silver, tinh tu gia tri sach + ma loi.
+
+    Khong doc tep, khong parse chuoi: quyet dinh cach ly dua tren ma loi da cai
+    (orders) hoac gia tri sau khi cai loi (order_items).
+    """
+
+    def __init__(self, cfg, version):
+        """Khoi tao trang thai rong cho mot rules_version."""
+        self.cfg = cfg
+        self.version = version
+        self.channel_rank = {ch: i for i, ch in enumerate(cfg["channels"])}
+        self.state = {entity: {} for entity in ENTITIES}
+
+    def failed_rules(self, row):
+        """Danh sach quy tac drop ma dong vi pham (theo thu tu khai bao)."""
+        if row.entity == "orders":
+            return [rule for code, rule in ORDER_DROP_RULES[self.version] if code in row.errors]
+        if row.entity == "order_items":
+            failed = []
+            if row.values["quantity"] <= 0:
+                failed.append("quantity_positive")
+            if (row.values["product_id"],) not in self.state["products"]:
+                failed.append("product_exists")
+            if (row.values["order_id"],) not in self.state["orders"]:
+                failed.append("order_exists")
+            return failed
+        return []
+
+    def order_rank(self, date, row):
+        """Thu tu uu tien khi loai trung (lon hon = giu lai)."""
+        file_name = source_file_of(self.cfg, date, row)
+        if row.entity == "orders":
+            return (row.values["updated_at"], self.channel_rank[row.channel], file_name)
+        return (file_name,)
+
+    def process_entity(self, date, entity, rows):
+        """Ap quy tac, loai trung, merge mot thuc the; tra ve thong ke + ds cach ly."""
+        valid, quarantined = [], []
+        for row in rows:
+            failed = self.failed_rules(row)
+            if failed:
+                quarantined.append((row, failed))
+            else:
+                valid.append(row)
+        winners = {}
+        for row in valid:
+            k = row_key(row)
+            if k not in winners or self.order_rank(date, row) > self.order_rank(date, winners[k]):
+                winners[k] = row
+        table = self.state[entity]
+        for k, row in winners.items():
+            old = table.get(k)
+            if entity == "orders" and old is not None and row.values["updated_at"] < old["updated_at"]:
+                continue
+            table[k] = dict(row.values)
+        stats = {"n_input": len(rows), "n_valid": len(winners),
+                 "n_quarantined": len(quarantined),
+                 "n_duplicates_removed": len(valid) - len(winners)}
+        return stats, quarantined, list(winners)
+
+    def items_total(self, order_id):
+        """Tong line_amount cua cac dong Silver thuoc don."""
+        return sum(v["quantity"] * v["unit_price"]
+                   for (oid, _pid), v in self.state["order_items"].items() if oid == order_id)
+
+    def process_day(self, date, day):
+        """Xu ly mot lo (mot ngay) theo thu tu products -> customers -> orders -> order_items."""
+        result = {"entities": {}, "quarantined": {}, "n_warn_by_rule": {}}
+        order_keys = []
+        for entity in ENTITIES:
+            stats, quarantined, keys = self.process_entity(date, entity, day[entity])
+            result["entities"][entity] = stats
+            if entity == "orders":
+                order_keys = keys
+            if entity in ("orders", "order_items"):
+                cols = ENTITY_KEYS[entity]
+                result["quarantined"][entity] = sorted(
+                    [dict({c: row.values[c] for c in cols},
+                          source_file=source_file_of(self.cfg, date, row),
+                          failed_rules="; ".join(failed))
+                     for row, failed in quarantined],
+                    key=lambda q: (int(q["order_id"].split("-")[1]),) + tuple(
+                        q[c] for c in cols[1:]) + (q["source_file"],))
+        result["n_warn_by_rule"]["phone_not_null"] = sum(
+            1 for r in day["customers"] if not r.values["phone"])
+        orders = self.state["orders"]
+        result["n_warn_by_rule"]["total_amount_matches_items"] = sum(
+            1 for (oid,) in order_keys if orders[(oid,)]["total_amount"] != self.items_total(oid))
+        result["silver_counts"] = {entity: len(self.state[entity]) for entity in ENTITIES}
+        result["quarantine_rate"] = {
+            entity: (s["n_quarantined"] / s["n_input"] if s["n_input"] else 0.0)
+            for entity, s in result["entities"].items()}
+        return result
+
+
 def build_answer_key(cfg, dataset):
     """Lap answer key cho moi ngay."""
     key = {"seed": cfg["seed"], "dates": list(cfg["dates"]), "days": {}}
+    models = {v: ExpectedLakehouse(cfg, v) for v in ("v1", "v2")}
     for date in cfg["dates"]:
         day = dataset[date]
         key["days"][date] = {
             "landing_counts": landing_counts(day),
             "landing_file_counts": landing_file_counts(cfg, date, day),
             "error_counts": error_counts(day),
+            "outcomes": {v: m.process_day(date, day) for v, m in models.items()},
         }
     return key
 
