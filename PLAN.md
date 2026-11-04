@@ -46,7 +46,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
   - File: `requirements.txt`, `pytest.ini`
   - Xong khi: `pip install -r requirements.txt && pip check` thành công.
 
-- [ ] **T03. Config**
+- [x] **T03. Config**
   - Việc: tạo `config.yaml` theo SPEC mục 5, thêm tỷ lệ lỗi mục 6.3; `common/config.py` đọc YAML và cho phép ghi đè `paths.lakehouse`, `paths.landing` (để test và thí nghiệm dùng thư mục tạm).
   - File: `config.yaml`, `common/__init__.py`, `common/config.py`, `tests/test_config.py`
   - Xong khi: `pytest tests/test_config.py` pass.
