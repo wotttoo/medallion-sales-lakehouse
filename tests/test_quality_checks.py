@@ -142,3 +142,48 @@ def test_orphan_keys_detected(spark, small_lakehouse):
         .write.format("delta").mode("overwrite").save(path)
     with pytest.raises(qc.QualityCheckError, match="customer_id -> dim_customer.*C-2"):
         qc.check_no_orphan_keys(spark, small_lakehouse)
+
+
+# ---------------------------------------------------------------- T53 pipeline fail
+@pytest.fixture(scope="module")
+def landing_dir(tmp_path_factory):
+    """Sinh landing vao thu muc tam."""
+    import generate_data
+    out = tmp_path_factory.mktemp("qc_data")
+    generate_data.main(["--output-dir", str(out)])
+    return out / "landing"
+
+
+def test_pipeline_fails_on_quarantine_rate(spark, landing_dir, tmp_path):
+    """Nguong cach ly qua thap -> exit code 1, run log silver status = failed."""
+    import yaml
+    import run_pipeline
+    from common import run_log
+    from common.config import DEFAULT_CONFIG_PATH, load_config
+    cfg_data = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg_data["quarantine_rate_threshold"] = 0.001
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg_data), encoding="utf-8")
+    lh = tmp_path / "lh"
+    code = run_pipeline.main(["--processing-date", "2026-10-19", "--layer", "all",
+                              "--config", str(cfg_path), "--lakehouse-dir", str(lh),
+                              "--landing-dir", str(landing_dir)], spark=spark)
+    assert code == 1
+    cfg = load_config(cfg_path, lakehouse_dir=lh)
+    logs = {(r["layer"], r["status"]) for r in run_log.read_run_log(spark, cfg).collect()}
+    assert logs == {("bronze", "success"), ("silver", "failed")}
+    # gold khong chay sau khi silver fail
+    assert not (lh / "gold").exists()
+
+
+def test_pipeline_fails_without_landing(spark, tmp_path):
+    """Thieu tep landing -> bronze failed, exit code khac 0."""
+    import run_pipeline
+    from common import run_log
+    from common.config import load_config
+    code = run_pipeline.main(["--processing-date", "2026-10-19", "--layer", "bronze",
+                              "--lakehouse-dir", str(tmp_path / "lh"),
+                              "--landing-dir", str(tmp_path / "empty")], spark=spark)
+    assert code == 1
+    rows = run_log.read_run_log(spark, load_config(lakehouse_dir=tmp_path / "lh")).collect()
+    assert [(r["layer"], r["status"]) for r in rows] == [("bronze", "failed")]

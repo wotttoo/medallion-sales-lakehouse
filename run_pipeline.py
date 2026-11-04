@@ -2,8 +2,11 @@
 
 Vi du:
     python run_pipeline.py --processing-date 2026-10-19 --layer all
-    python run_pipeline.py --processing-date 2026-10-19 --layer bronze
-Moi layer chay xong ghi mot dong run log; loi thi ghi status = failed va exit code 1.
+    python run_pipeline.py --processing-date 2026-10-19 --layer bronze|silver|gold
+    python run_pipeline.py --rebuild --rules-version v2
+    python run_pipeline.py --all-dates
+Moi layer chay xong chay cac check tuong ung (quality_checks.py) va ghi mot dong
+run log; loi thi ghi status = failed va exit code 1.
 """
 
 import argparse
@@ -15,6 +18,8 @@ from common.config import load_config
 from common.run_log import read_ingested_files, successful_batches, utc_now, write_run_log
 from common.spark import get_spark
 from gold_build import build_gold
+from quality_checks import (check_no_orphan_keys, check_quarantine_rate, check_record_conservation,
+                            check_revenue_reconciliation, check_volume)
 from silver_transform import all_batches, drop_derived_layers, pending_batches, process_batch
 
 LAYERS = ["bronze", "silver", "gold"]
@@ -31,15 +36,24 @@ def parse_args(argv=None):
     parser.add_argument("--layer", default="all", choices=LAYERS + ["all"])
     parser.add_argument("--rules-version", choices=["v1", "v2"],
                         help="ghi de rules_version trong config")
+    parser.add_argument("--all-dates", action="store_true",
+                        help="chay lan luot moi ngay trong config.dates (--layer all)")
     parser.add_argument("--rebuild", action="store_true",
                         help="xoa Silver/quarantine/Gold va dung lai tu Bronze")
     parser.add_argument("--config", help="duong dan config.yaml khac")
     parser.add_argument("--lakehouse-dir", help="ghi de paths.lakehouse")
     parser.add_argument("--landing-dir", help="ghi de paths.landing")
     args = parser.parse_args(argv)
-    if not args.processing_date and not args.rebuild:
-        parser.error("can --processing-date hoac --rebuild")
+    if not (args.processing_date or args.rebuild or args.all_dates):
+        parser.error("can --processing-date, --all-dates hoac --rebuild")
     return args
+
+
+def print_checks(layer, *results):
+    """In ket qua cac check muc tap du lieu (check loi da raise truoc do)."""
+    for result in results:
+        for name, value in result.items():
+            print(f"[{layer}] check {name}: {value}")
 
 
 def logged_run(spark, cfg, layer, processing_date, fn):
@@ -69,6 +83,8 @@ def run_bronze(spark, cfg, processing_date):
         result = ingest_date(spark, cfg, processing_date)
         print(f"[bronze] {processing_date}: lo {result['_batch_id']}, "
               f"nap {len(result['input_files'])} tep, bo qua {len(result['skipped_files'])} tep")
+        if result["_batch_id"]:
+            print_checks("bronze", check_volume(spark, cfg, processing_date))
         return {"_batch_id": result["_batch_id"], "input_files": result["input_files"],
                 "n_input": result["n_input"],
                 "delta_versions_written": result["delta_versions_written"]}
@@ -96,6 +112,8 @@ def run_silver(spark, cfg, processing_date, batches=None):
             print(f"[silver] lo {batch_id} ({cfg['rules_version']}): " + ", ".join(
                 f"{e} {s['n_valid']} hop le/{s['n_quarantined']} cach ly/"
                 f"{s['n_duplicates_removed']} trung" for e, s in result["entities"].items()))
+            print_checks("silver", check_record_conservation(result["entities"]),
+                         check_quarantine_rate(result["entities"], cfg["quarantine_rate_threshold"]))
             return {k: result[k] for k in ("_batch_id", "input_files", "n_input", "n_valid",
                                             "n_quarantined", "n_duplicates_removed",
                                             "n_warn_by_rule", "delta_versions_written")}
@@ -123,6 +141,8 @@ def run_gold(spark, cfg, processing_date, batches=None):
             result = build_gold(spark, cfg, batch_id)
             print(f"[gold] lo {batch_id}: ghi lai cac ngay "
                   + ", ".join(d.isoformat() for d in result["dates"]))
+            print_checks("gold", check_revenue_reconciliation(spark, cfg),
+                         check_no_orphan_keys(spark, cfg))
             return {"_batch_id": batch_id,
                     "input_files": [f"silver.{e}" for e in ("orders", "order_items",
                                                              "customers", "products")],
@@ -162,6 +182,9 @@ def main(argv=None, spark=None):
     try:
         if args.rebuild:
             run_rebuild(spark, cfg)
+        elif args.all_dates:
+            for date in cfg["dates"]:
+                run_date(spark, cfg, date, args.layer)
         else:
             run_date(spark, cfg, args.processing_date, args.layer)
     except Exception as exc:

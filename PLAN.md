@@ -305,7 +305,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k orphan` pass.
 
-- [ ] **T53. Nối check vào pipeline, thêm --all-dates**
+- [x] **T53. Nối check vào pipeline, thêm --all-dates**
   - Việc: chạy check sau từng layer; fail thì ghi run log `status = failed` và trả exit code khác 0; thêm `--all-dates`.
   - File: `run_pipeline.py`, `tests/test_quality_checks.py`
   - Xong khi: `python run_pipeline.py --all-dates` trả exit code 0 và `pytest tests/test_quality_checks.py -k pipeline_fails` pass.
