@@ -8,9 +8,13 @@ Quy tac Bronze (SPEC 7.2):
 
 import csv
 import json
+from datetime import timedelta
 from pathlib import Path
 
+from pyspark.sql import functions as F
+
 from common.config import resolve_path
+from common.run_log import utc_now
 
 # thu tu nap cac thuc the trong mot lo
 ENTITY_ORDER = ["products", "customers", "orders", "order_items"]
@@ -117,3 +121,35 @@ def check_file(file_info):
     if n == 0:
         raise FileCheckError(f"Tep khong co dong du lieu: {name}")
     return n
+
+
+# ---------------------------------------------------------------------------
+# Doc tep thanh DataFrame (moi cot la string) + metadata
+# ---------------------------------------------------------------------------
+def next_ingest_time(previous=None):
+    """Gio nap cua tep tiep theo: gio he thong, luon tang ngat so voi tep truoc.
+
+    Nho vay dong cua tep doc sau (vd app) luon co _ingest_time lon hon (vd web).
+    """
+    now = utc_now()
+    if previous is not None and now <= previous:
+        now = previous + timedelta(milliseconds=1)
+    return now
+
+
+def read_file_as_strings(spark, file_info, ingest_time):
+    """Doc mot tep nguon, moi cot la string, them _ingest_time va _source_file.
+
+    Cot nguon xep dung thu tu SPEC; cot moi (vd promo_code) dat sau, theo ten.
+    """
+    path = str(file_info["path"])
+    if file_info["fmt"] == "json":
+        df = spark.read.option("primitivesAsString", True).option("mode", "FAILFAST").json(path)
+    else:
+        df = (spark.read.option("header", True).option("inferSchema", False)
+              .option("encoding", "UTF-8").option("mode", "FAILFAST").csv(path))
+    base = SOURCE_COLUMNS[file_info["entity"]]
+    extra = sorted(c for c in df.columns if c not in base)
+    df = df.select([F.col(c).cast("string").alias(c) for c in base + extra])
+    return (df.withColumn("_ingest_time", F.lit(ingest_time).cast("timestamp"))
+              .withColumn("_source_file", F.lit(file_info["file_name"])))

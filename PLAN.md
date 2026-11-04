@@ -151,7 +151,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k file_checks` pass.
 
-- [ ] **T23. Đọc tệp thành DataFrame string** (P2)
+- [x] **T23. Đọc tệp thành DataFrame string** (P2)
   - Việc: đọc CSV và JSON với mọi cột là string; thêm `_source_file`; `_ingest_time` tăng dần theo từng tệp để dòng app sau dòng web.
   - File: `bronze_ingest.py`, `tests/test_bronze.py`
   - Xong khi: `pytest tests/test_bronze.py -k read_as_string` pass.

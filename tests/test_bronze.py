@@ -68,3 +68,44 @@ def test_file_checks_bad_files_name_the_file(tmp_path, content, fmt, message):
         bi.check_file(make_info(path, fmt=fmt))
     assert path.name in str(exc.value)
     assert message in str(exc.value)
+
+
+# ---------------------------------------------------------------- T23 doc string
+def test_read_as_string_all_columns_string(spark, cfg):
+    """CSV va JSON deu doc moi cot la string, dung thu tu cot, co metadata."""
+    files = {f["file_name"]: f for f in bi.list_landing_files(cfg, "2026-10-19")}
+    t = bi.next_ingest_time()
+    for name in ["web_2026-10-19.csv", "partner_2026-10-19.json", "order_items_2026-10-19.csv"]:
+        df = bi.read_file_as_strings(spark, files[name], t)
+        entity = files[name]["entity"]
+        assert df.columns == bi.SOURCE_COLUMNS[entity] + ["_ingest_time", "_source_file"]
+        types = dict(df.dtypes)
+        assert all(types[c] == "string" for c in bi.SOURCE_COLUMNS[entity])
+        assert types["_ingest_time"] == "timestamp"
+        assert {r["_source_file"] for r in df.select("_source_file").collect()} == {name}
+
+
+def test_read_as_string_keeps_raw_values(spark, cfg):
+    """Gia tri goc giu nguyen: ORD-1002 co '19/10/2026', '150.000đ'."""
+    f = next(x for x in bi.list_landing_files(cfg, "2026-10-19")
+             if x["file_name"] == "partner_2026-10-19.json")
+    row = bi.read_file_as_strings(spark, f, bi.next_ingest_time()) \
+        .where("order_id = 'ORD-1002'").collect()[0]
+    assert row["order_date"] == "19/10/2026"
+    assert row["total_amount"] == "150.000đ"
+    assert row["customer_id"] == ""
+
+
+def test_read_as_string_promo_code_day3(spark, cfg):
+    """Tep partner ngay 3 co them cot promo_code (dat sau cot chuan)."""
+    f = next(x for x in bi.list_landing_files(cfg, "2026-10-21") if x["fmt"] == "json")
+    df = bi.read_file_as_strings(spark, f, bi.next_ingest_time())
+    assert df.columns[:8] == bi.SOURCE_COLUMNS["orders"] + ["promo_code"]
+
+
+def test_read_as_string_ingest_time_increases():
+    """Gio nap tang ngat qua tung tep."""
+    t1 = bi.next_ingest_time()
+    t2 = bi.next_ingest_time(t1)
+    t3 = bi.next_ingest_time(t2 + bi.timedelta(seconds=5))
+    assert t1 < t2 < t3
