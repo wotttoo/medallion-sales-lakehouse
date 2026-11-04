@@ -84,7 +84,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k showcase` pass.
 
-- [ ] **T10. Cài lỗi nhóm A**
+- [x] **T10. Cài lỗi nhóm A**
   - Việc: cài A1, A2, A3, A4 theo tỷ lệ config; A1 chủ yếu ở kênh partner.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_a` pass.

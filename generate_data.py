@@ -52,6 +52,28 @@ SHOWCASE_PRODUCT_PRICES = {"P-001": ("Books", 50_000), "P-002": ("Beauty", 75_00
 
 
 # ---------------------------------------------------------------------------
+# Loi dinh dang: ap khi ghi tep
+# ---------------------------------------------------------------------------
+def format_ddmmyyyy(iso_date):
+    """'2026-10-19' -> '19/10/2026' (loi A1)."""
+    y, m, d = iso_date.split("-")
+    return f"{d}/{m}/{y}"
+
+
+def format_vnd(amount):
+    """150000 -> '150.000đ' (loi A2)."""
+    return f"{amount:,}".replace(",", ".") + "đ"
+
+
+# ma loi -> (cot, ham doi gia tri thanh chuoi loi)
+FORMAT_ERRORS = {
+    "A1_date_ddmmyyyy": ("order_date", format_ddmmyyyy),
+    "A2_amount_vnd_string": ("total_amount", format_vnd),
+    "C1_missing_customer_id": ("customer_id", lambda _v: ""),
+}
+
+
+# ---------------------------------------------------------------------------
 # Cau truc du lieu
 # ---------------------------------------------------------------------------
 @dataclass
@@ -65,8 +87,9 @@ class LandingRow:
     values: dict
     errors: list = field(default_factory=list)
     channel: str = None          # chi dung cho orders: tep kenh nao
-    raw: dict = field(default_factory=dict)    # chuoi ghi de khi ghi tep (loi dinh dang)
+    raw: dict = field(default_factory=dict)    # chuoi ghi de khi ghi tep
     clean: dict = None           # gia tri sach truoc khi cai loi
+    tags: set = field(default_factory=set)     # nhan noi bo: new, resend, dup_copy, b_source
 
     def __post_init__(self):
         """Luu ban sach ngay khi tao dong."""
@@ -80,14 +103,18 @@ class LandingRow:
         self.raw.update(raw_overrides)
 
     def to_raw(self, columns):
-        """Doi dong thanh dict chuoi theo dung thu tu cot (dung khi ghi tep)."""
+        """Doi dong thanh dict chuoi theo dung thu tu cot (dung khi ghi tep).
+
+        Loi dinh dang (A1, A2, C1) duoc ap luc ghi, tu gia tri hien tai.
+        """
         out = {}
         for col in columns:
-            if col in self.raw:
-                out[col] = self.raw[col]
-            else:
-                v = self.values.get(col)
-                out[col] = "" if v is None else str(v)
+            v = self.values.get(col)
+            out[col] = "" if v is None else str(v)
+        for code, (col, formatter) in FORMAT_ERRORS.items():
+            if code in self.errors:
+                out[col] = formatter(self.values[col])
+        out.update({k: v for k, v in self.raw.items() if k in columns})
         return out
 
 
@@ -282,17 +309,6 @@ def make_showcase_orders(date):
     return [ord_1001, ord_1002]
 
 
-def format_ddmmyyyy(iso_date):
-    """'2026-10-19' -> '19/10/2026' (loi A1)."""
-    y, m, d = iso_date.split("-")
-    return f"{d}/{m}/{y}"
-
-
-def format_vnd(amount):
-    """150000 -> '150.000đ' (loi A2)."""
-    return f"{amount:,}".replace(",", ".") + "đ"
-
-
 def apply_showcase(rows_orders):
     """Cai loi co dinh cho don minh hoa ngay 1.
 
@@ -307,12 +323,88 @@ def apply_showcase(rows_orders):
     copy.values["channel"] = "app"
     copy.values["updated_at"] = web_1001.values["updated_at"].replace("09:15:00", "09:20:00")
     copy.add_error("B1_dup_cross_channel")
+    copy.tags.add("dup_copy")
+    web_1001.tags.add("b_source")
     rows_orders.append(copy)
 
     r = by_id["ORD-1002"]
-    r.add_error("C1_missing_customer_id", customer_id="")
-    r.add_error("A1_date_ddmmyyyy", order_date=format_ddmmyyyy(r.values["order_date"]))
-    r.add_error("A2_amount_vnd_string", total_amount=format_vnd(r.values["total_amount"]))
+    for code in ("C1_missing_customer_id", "A1_date_ddmmyyyy", "A2_amount_vnd_string"):
+        r.add_error(code)
+
+
+# ---------------------------------------------------------------------------
+# Chon dong de cai loi
+# ---------------------------------------------------------------------------
+def random_error_pool(rows):
+    """Don moi (khong phai don minh hoa, khong nam trong cap trung B) de cai loi."""
+    return [r for r in rows
+            if "new" in r.tags and "b_source" not in r.tags
+            and r.values["order_id"] not in SHOWCASE_IDS]
+
+
+def pick_rows(rng, pool, n):
+    """Chon n dong tu pool (giu thu tu on dinh)."""
+    n = max(0, min(n, len(pool)))
+    return rng.sample(pool, n)
+
+
+def n_new_orders(day):
+    """So don moi trong ngay (khong tinh dong gui lai / dong trung)."""
+    return sum(1 for r in day["orders"] if "new" in r.tags)
+
+
+def already(rows, code):
+    """So dong da co ma loi code (vd do ban ghi minh hoa)."""
+    return sum(1 for r in rows if code in r.errors)
+
+
+# ---------------------------------------------------------------------------
+# Nhom A: chuan hoa duoc
+# ---------------------------------------------------------------------------
+def inject_group_a(cfg, date, day):
+    """Cai A1 (chu yeu partner), A2, A3 vao orders va A4 vao customers."""
+    rates = cfg["error_rates"]
+    rng = make_rng(cfg["seed"], f"group_a:{date}")
+    orders = day["orders"]
+    n = n_new_orders(day)
+
+    # A1: order_date dang DD/MM/YYYY, phan lon o kenh partner
+    code = "A1_date_ddmmyyyy"
+    target = count_for(rates[code], n)
+    n_partner = int(target * rates["A1_partner_share"] + 0.5)
+    pool = random_error_pool(orders)
+    partner_pool = [r for r in pool if r.channel == "partner"]
+    other_pool = [r for r in pool if r.channel != "partner"]
+    done_partner = sum(1 for r in orders if code in r.errors and r.channel == "partner")
+    done_other = already(orders, code) - done_partner
+    for r in pick_rows(rng, partner_pool, n_partner - done_partner):
+        r.add_error(code)
+    for r in pick_rows(rng, other_pool, target - n_partner - done_other):
+        r.add_error(code)
+
+    # A2: total_amount dang chuoi "150.000đ"
+    code = "A2_amount_vnd_string"
+    pool = [r for r in random_error_pool(orders) if code not in r.errors]
+    for r in pick_rows(rng, pool, count_for(rates[code], n) - already(orders, code)):
+        r.add_error(code)
+
+    # A3: status viet hoa lan lon
+    code = "A3_status_case"
+    pool = random_error_pool(orders)
+    for r in pick_rows(rng, pool, count_for(rates[code], n)):
+        style = rng.choice([str.title, str.upper])
+        r.add_error(code, status=style(r.values["status"]))
+
+    # A4: cung customer_id xuat hien 2 dong, email chi khac chu hoa thuong
+    code = "A4_email_case"
+    customers = day["customers"]
+    for r in pick_rows(rng, list(customers), count_for(rates[code], len(customers))):
+        copy = LandingRow("customers", dict(r.values))
+        copy.clean = dict(r.clean)
+        local, domain = r.values["email"].split("@")
+        copy.add_error(code, email=f"{local.title()}@{domain.upper()}")
+        copy.tags.add("dup_copy")
+        customers.insert(customers.index(r) + 1, copy)
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +432,13 @@ def build_dataset(cfg):
             "order_items": [LandingRow("order_items", dict(i))
                             for o in clean_orders[date] for i in o["items"]],
         }
+        for r in day["orders"]:
+            r.tags.add("new")
         dataset[date] = day
     apply_showcase(dataset[first_date]["orders"])
+
+    for date in cfg["dates"]:
+        inject_group_a(cfg, date, dataset[date])
     return dataset
 
 

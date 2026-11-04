@@ -165,3 +165,58 @@ def test_showcase_clean_values_kept(cfg, dataset):
     r = rows_of(dataset, cfg["dates"][0], "orders", "ORD-1002")[0]
     assert r.clean["order_date"] == "2026-10-19"
     assert r.clean["total_amount"] == 150_000
+
+
+# ---------------------------------------------------------------- T10 nhom A
+def error_rows(dataset, date, entity, code):
+    """Cac dong cua ngay co ma loi code."""
+    return [r for r in dataset[date][entity] if code in r.errors]
+
+
+def expected_count(cfg, code, n):
+    """So loi mong doi theo ty le config."""
+    return gd.count_for(cfg["error_rates"][code], n)
+
+
+def test_group_a_counts_match_rates(cfg, dataset):
+    """A1, A2, A3 dung so luong theo ty le tren don moi trong ngay."""
+    n = cfg["volume"]["orders_per_day"]
+    for date in cfg["dates"]:
+        for code in ["A1_date_ddmmyyyy", "A2_amount_vnd_string", "A3_status_case"]:
+            assert len(error_rows(dataset, date, "orders", code)) == expected_count(cfg, code, n), (date, code)
+
+
+def test_group_a_a1_mostly_partner(cfg, dataset):
+    """A1 chu yeu tu kenh partner."""
+    for date in cfg["dates"]:
+        rows = error_rows(dataset, date, "orders", "A1_date_ddmmyyyy")
+        share = sum(r.channel == "partner" for r in rows) / len(rows)
+        assert share >= 0.7
+
+
+def test_group_a_raw_formats(cfg, dataset):
+    """Chuoi ghi ra dung dang loi."""
+    for date in cfg["dates"]:
+        for r in error_rows(dataset, date, "orders", "A1_date_ddmmyyyy"):
+            assert re.fullmatch(r"\d{2}/\d{2}/\d{4}", r.to_raw(gd.ORDER_COLUMNS)["order_date"])
+        for r in error_rows(dataset, date, "orders", "A2_amount_vnd_string"):
+            raw = r.to_raw(gd.ORDER_COLUMNS)["total_amount"]
+            assert re.fullmatch(r"\d{1,3}(\.\d{3})*đ", raw)
+            assert int(raw[:-1].replace(".", "")) == r.values["total_amount"]
+        for r in error_rows(dataset, date, "orders", "A3_status_case"):
+            raw = r.to_raw(gd.ORDER_COLUMNS)["status"]
+            assert raw != r.values["status"] and raw.lower() == r.values["status"]
+
+
+def test_group_a_a4_email_case(cfg, dataset):
+    """A4: cung customer_id 2 dong, email chi khac chu hoa thuong."""
+    for date in cfg["dates"]:
+        customers = dataset[date]["customers"]
+        copies = error_rows(dataset, date, "customers", "A4_email_case")
+        assert len(copies) == expected_count(cfg, "A4_email_case",
+                                             len(customers) - len(copies))
+        for c in copies:
+            same = [r for r in customers if r.values["customer_id"] == c.values["customer_id"]]
+            assert len(same) == 2
+            emails = [r.to_raw(gd.CUSTOMER_COLUMNS)["email"] for r in same]
+            assert emails[0] != emails[1] and emails[0].lower() == emails[1].lower()
