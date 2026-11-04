@@ -141,7 +141,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `common/run_log.py`, `tests/test_run_log.py`
   - Xong khi: `pytest tests/test_run_log.py -k ingested` pass.
 
-- [ ] **T21. Bảng run_log** (P2)
+- [x] **T21. Bảng run_log** (P2)
   - Việc: ghi và đọc đủ cột SPEC 7.6; `code_version` trả về `"unknown"` khi không có git.
   - File: `common/run_log.py`, `tests/test_run_log.py`
   - Xong khi: `pytest tests/test_run_log.py -k run_log` pass.
