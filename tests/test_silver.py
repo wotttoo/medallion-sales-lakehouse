@@ -131,3 +131,63 @@ def test_normalize_items_dispatch(spark):
     """normalize() chon dung ham theo thuc the."""
     with pytest.raises(ValueError):
         st.normalize(None, "unknown", "v1")
+
+
+# ---------------------------------------------------------------- T32 ap quy tac
+def checked_orders(spark, version):
+    """Chuan hoa + ap quy tac cho SAMPLE_ORDERS."""
+    df = st.normalize_orders(spark.createDataFrame(SAMPLE_ORDERS, ORDER_COLS), version)
+    return st.apply_rules(df, "orders")
+
+
+def test_apply_rules_failed_rules_all_evaluated(spark):
+    """Danh gia tat ca quy tac, khong dung o quy tac dau; dung thu tu khai bao."""
+    checked, _ = checked_orders(spark, "v1")
+    got = {r["order_id"]: r["_failed_rules"] for r in checked.collect()}
+    assert got["ORD-1001"] is None
+    assert got["ORD-1002"] == "customer_id_not_null; order_date_valid_format; total_amount_numeric"
+    assert got["ORD-1004"] == "order_date_valid_format; total_amount_numeric"
+    checked, _ = checked_orders(spark, "v2")
+    got = {r["order_id"]: r["_failed_rules"] for r in checked.collect()}
+    assert got["ORD-1002"] == "customer_id_not_null"
+
+
+def test_apply_rules_split(spark):
+    """Hop le khong con cot _failed_rules; quarantine giu ly do."""
+    checked, _ = checked_orders(spark, "v1")
+    valid, quarantined = st.split_valid_quarantine(checked)
+    assert sorted(r["order_id"] for r in valid.collect()) == ["ORD-1001", "ORD-1003"]
+    assert "_failed_rules" not in valid.columns
+    assert sorted(r["order_id"] for r in quarantined.collect()) == ["ORD-1002", "ORD-1004"]
+
+
+def test_apply_rules_status_and_warn(spark):
+    """status ngoai tap cho phep bi drop; phone_not_null chi dem canh bao."""
+    df = spark.createDataFrame(
+        [("ORD-9", "C-1", "2026-10-19", "1", "lost", "web", "2026-10-19 00:00:00")], ORDER_COLS)
+    checked, warns = st.apply_rules(st.normalize_orders(df, "v2"), "orders")
+    assert checked.collect()[0]["_failed_rules"] == "status_in_allowed_set"
+    assert warns == {}
+    cust = st.normalize_customers(spark.createDataFrame(
+        [("C-1", "A", "a@x.com", "", "Hue"), ("C-2", "B", "b@x.com", "0900000000", "Hue")],
+        CUSTOMER_COLS))
+    checked, warns = st.apply_rules(cust, "customers")
+    assert warns == {"phone_not_null": 1}
+    valid, quarantined = st.split_valid_quarantine(checked)
+    assert valid.count() == 2 and quarantined.count() == 0
+
+
+def test_apply_rules_items_reference_flags(spark):
+    """order_items: quantity_positive, product_exists, order_exists qua cot co tu join."""
+    items = st.normalize_order_items(spark.createDataFrame(
+        [("ORD-1", "P-001", "2", "10"), ("ORD-1", "P-999", "0", "10"), ("ORD-2", "P-001", "1", "10")],
+        "order_id string, product_id string, quantity string, unit_price string"))
+    products = spark.createDataFrame([("P-001",)], "product_id string")
+    orders = spark.createDataFrame([("ORD-1",)], "order_id string")
+    items = st.add_exists_flag(items, products, "product_id", "_product_exists")
+    items = st.add_exists_flag(items, orders, "order_id", "_order_exists")
+    checked, _ = st.apply_rules(items, "order_items")
+    got = {(r["order_id"], r["product_id"]): r["_failed_rules"] for r in checked.collect()}
+    assert got == {("ORD-1", "P-001"): None,
+                   ("ORD-1", "P-999"): "quantity_positive; product_exists",
+                   ("ORD-2", "P-001"): "order_exists"}

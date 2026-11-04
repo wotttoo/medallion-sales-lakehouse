@@ -11,6 +11,8 @@ Thu tu thuc the: products -> customers -> orders -> order_items.
 
 from pyspark.sql import functions as F
 
+from quality_rules import rules_for
+
 # cot metadata tu Bronze, giu lai qua cac buoc
 METADATA_COLUMNS = ["_ingest_time", "_source_file", "_batch_id"]
 
@@ -129,3 +131,60 @@ def normalize(df, entity, rules_version):
     if entity == "order_items":
         return normalize_order_items(df)
     raise ValueError(f"Thuc the khong hop le: {entity}")
+
+
+# ---------------------------------------------------------------------------
+# Buoc 2-3: ap quy tac va tach nhanh
+# ---------------------------------------------------------------------------
+def add_exists_flag(df, ref_df, key, flag_name):
+    """Them cot boolean flag_name: khoa `key` co trong ref_df hay khong."""
+    ref = ref_df.select(key).distinct().withColumn(flag_name, F.lit(True))
+    return (df.join(ref, on=key, how="left")
+              .withColumn(flag_name, F.coalesce(F.col(flag_name), F.lit(False))))
+
+
+def rule_passed(rule):
+    """Cot boolean: TRUE neu dat quy tac (NULL tinh la vi pham)."""
+    # BEGIN SOLUTION
+    return F.coalesce(F.expr(rule["condition"]), F.lit(False))
+    # END SOLUTION
+
+
+def failed_rules_column(rules):
+    """Chuoi ten cac quy tac drop bi vi pham, noi bang '; ' (NULL neu khong vi pham)."""
+    # BEGIN SOLUTION
+    names = [F.when(~rule_passed(r), F.lit(r["name"])) for r in rules if r["action"] == "drop"]
+    if not names:
+        return F.lit(None).cast("string")
+    joined = F.concat_ws("; ", *names)          # concat_ws bo qua NULL
+    return F.when(joined != "", joined)
+    # END SOLUTION
+
+
+def count_warnings(df, rules):
+    """Dem so ban ghi vi pham tung quy tac warn (tren moi ban ghi dau vao)."""
+    warn_rules = [r for r in rules if r["action"] == "warn"]
+    if not warn_rules:
+        return {}
+    row = df.agg(*[F.sum(F.when(~rule_passed(r), 1).otherwise(0)).alias(r["name"])
+                   for r in warn_rules]).collect()[0]
+    return {r["name"]: int(row[r["name"]] or 0) for r in warn_rules}
+
+
+def apply_rules(df, entity, stage="main"):
+    """Danh gia TAT CA quy tac cua thuc the, them cot _failed_rules.
+
+    Tra ve (df_co_failed_rules, so_canh_bao_theo_quy_tac).
+    """
+    rules = rules_for(entity, stage)
+    checked = df.withColumn("_failed_rules", failed_rules_column(rules))
+    return checked, count_warnings(df, rules)
+
+
+def split_valid_quarantine(checked):
+    """Tach nhanh: _failed_rules NULL -> hop le; nguoc lai -> quarantine."""
+    # BEGIN SOLUTION
+    valid = checked.where(F.col("_failed_rules").isNull()).drop("_failed_rules")
+    quarantined = checked.where(F.col("_failed_rules").isNotNull())
+    # END SOLUTION
+    return valid, quarantined

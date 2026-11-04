@@ -198,7 +198,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k normalize_items` pass.
 
-- [ ] **T32. Áp quy tắc và tách nhánh**
+- [x] **T32. Áp quy tắc và tách nhánh**
   - Việc: đánh giá tất cả quy tắc, tạo `_failed_rules`, tách hợp lệ và cách ly, đếm `warn`. Cần T27.
   - File: `silver_transform.py`, `tests/test_silver.py`
   - Xong khi: `pytest tests/test_silver.py -k apply_rules` pass.
