@@ -69,7 +69,7 @@ Chỉ gom các task khác file và không phụ thuộc nhau. Các task sửa ch
 ## M2. Dữ liệu nguồn và answer key
 Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, nên làm tuần tự.
 
-- [ ] **T07. Sinh customers và products sạch**
+- [x] **T07. Sinh customers và products sạch**
   - Việc: sinh theo seed đúng cột SPEC 6.1, ID dạng `C-001`, `P-001`.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k master` pass.
