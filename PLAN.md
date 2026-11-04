@@ -109,7 +109,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_t` pass.
 
-- [ ] **T15. Ghi tệp landing**
+- [x] **T15. Ghi tệp landing**
   - Việc: ghi CSV và JSON lines theo SPEC 6.2, orders ở `landing/<date>/orders/<channel>_<date>.<ext>`; thêm `--output-dir`.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `python generate_data.py` tạo đủ tệp 3 ngày và `pytest tests/test_generate_data.py -k landing_files` pass.

@@ -1,5 +1,7 @@
 """Test generate_data.py: du lieu sach, loi cai san, tep landing, answer key."""
 
+import csv
+import json
 import re
 
 import pytest
@@ -376,3 +378,69 @@ def test_group_t_t3_promo_code(cfg, dataset):
             has = "promo_code" in r.values
             assert has == (date == day3 and r.channel == "partner")
     assert any(r.values.get("promo_code") for r in dataset[day3]["orders"])
+
+
+# ---------------------------------------------------------------- T15 tep landing
+@pytest.fixture(scope="module")
+def landing(tmp_path_factory):
+    """Chay generate_data vao thu muc tam, tra ve thu muc landing."""
+    out = tmp_path_factory.mktemp("gen")
+    gd.main(["--output-dir", str(out)])
+    return out / "landing"
+
+
+def test_landing_files_exist(cfg, landing):
+    """Du 6 tep moi ngay, dung ten va vi tri."""
+    for d in cfg["dates"]:
+        expected = [f"{d}/orders/web_{d}.csv", f"{d}/orders/app_{d}.csv",
+                    f"{d}/orders/partner_{d}.json", f"{d}/order_items_{d}.csv",
+                    f"{d}/customers_{d}.csv", f"{d}/products_{d}.csv"]
+        for rel in expected:
+            assert (landing / rel).is_file(), rel
+            assert (landing / rel).stat().st_size > 0
+
+
+def test_landing_files_csv_columns(cfg, landing):
+    """Header CSV dung ten, dung thu tu cot."""
+    d = cfg["dates"][0]
+    for rel, columns in [(f"orders/web_{d}.csv", gd.ORDER_COLUMNS),
+                         (f"order_items_{d}.csv", gd.ITEM_COLUMNS),
+                         (f"customers_{d}.csv", gd.CUSTOMER_COLUMNS),
+                         (f"products_{d}.csv", gd.PRODUCT_COLUMNS)]:
+        with (landing / d / rel).open(encoding="utf-8", newline="") as f:
+            assert next(csv.reader(f)) == columns
+
+
+def test_landing_files_partner_jsonl(cfg, landing):
+    """Partner la JSON lines phang; ngay 3 co them promo_code."""
+    for i, d in enumerate(cfg["dates"]):
+        lines = (landing / d / "orders" / f"partner_{d}.json").read_text(encoding="utf-8").splitlines()
+        recs = [json.loads(line) for line in lines]
+        expected_cols = gd.ORDER_COLUMNS + (["promo_code"] if i == 2 else [])
+        assert all(list(r) == expected_cols for r in recs)
+        assert all(not isinstance(v, (dict, list)) for r in recs for v in r.values())
+
+
+def test_landing_files_showcase_rows(cfg, landing):
+    """Dong minh hoa dung trong tep: ORD-1001 o web va app, ORD-1002 o partner."""
+    d = cfg["dates"][0]
+    for ch in ["web", "app"]:
+        with (landing / d / "orders" / f"{ch}_{d}.csv").open(encoding="utf-8", newline="") as f:
+            first = next(csv.DictReader(f))
+        assert first["order_id"] == "ORD-1001" and first["customer_id"] == "C-017"
+        assert first["total_amount"] == "150000" and first["status"] == "delivered"
+    rec = json.loads((landing / d / "orders" / f"partner_{d}.json").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["order_id"] == "ORD-1002"
+    assert rec["customer_id"] == "" and rec["order_date"] == "19/10/2026"
+    assert rec["total_amount"] == "150.000đ" and rec["status"] == "shipping"
+
+
+def test_landing_files_row_counts(cfg, dataset, landing):
+    """So dong trong tep = so LandingRow cua thuc the."""
+    for d in cfg["dates"]:
+        n_orders = sum(len((landing / d / "orders" / f"{ch}_{d}.{fmt}").read_text(encoding="utf-8").splitlines())
+                       - (1 if fmt == "csv" else 0) for ch, fmt in cfg["channels"].items())
+        assert n_orders == len(dataset[d]["orders"])
+        for entity in ["order_items", "customers", "products"]:
+            n = len((landing / d / f"{entity}_{d}.csv").read_text(encoding="utf-8").splitlines()) - 1
+            assert n == len(dataset[d][entity])

@@ -4,11 +4,15 @@ Moi tinh ngau nhien dung seed trong config.yaml, chay lai cho ra tep giong het.
 Chay: python generate_data.py [--output-dir DIR]
 """
 
+import argparse
+import csv
+import json
 import random
-from datetime import datetime, timedelta
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 
-from common.config import load_config
+from common.config import load_config, resolve_path
 
 # ---------------------------------------------------------------------------
 # Cot cua tung thuc the (dung ten, dung thu tu SPEC 6.1)
@@ -638,12 +642,110 @@ def build_dataset(cfg):
     return dataset
 
 
-def main():
-    """Diem vao dong lenh (hoan thien o cac task sau)."""
+# ---------------------------------------------------------------------------
+# Ghi tep landing
+# ---------------------------------------------------------------------------
+ENTITY_COLUMNS = {"orders": ORDER_COLUMNS, "order_items": ITEM_COLUMNS,
+                  "customers": CUSTOMER_COLUMNS, "products": PRODUCT_COLUMNS}
+
+
+def order_file_name(channel, date, fmt):
+    """Ten tep don hang: <channel>_<date>.<ext> (khop _source_file trong reading)."""
+    return f"{channel}_{date}.{fmt}"
+
+
+def entity_file_name(entity, date):
+    """Ten tep cua thuc the khac: <entity>_<date>.csv."""
+    return f"{entity}_{date}.csv"
+
+
+def order_sort_key(row):
+    """Sap xep dong don theo so thu tu order_id roi updated_at."""
+    return int(row.values["order_id"].split("-")[1]), row.values["updated_at"]
+
+
+def write_csv(path, columns, raw_rows):
+    """Ghi CSV UTF-8, xuong dong '\\n' de tep giong het tren moi he dieu hanh."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerow(columns)
+        for raw in raw_rows:
+            writer.writerow([raw[c] for c in columns])
+
+
+def to_json_record(raw, columns):
+    """Dong JSON phang: so tien thuan ghi dang so, cot rong cua promo_code la null."""
+    rec = {}
+    for c in columns:
+        v = raw[c]
+        if c == "total_amount" and v.isdigit():
+            v = int(v)
+        elif c == "promo_code" and v == "":
+            v = None
+        rec[c] = v
+    return rec
+
+
+def write_jsonl(path, columns, raw_rows):
+    """Ghi JSON lines (moi dong mot object phang)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        for raw in raw_rows:
+            f.write(json.dumps(to_json_record(raw, columns), ensure_ascii=False) + "\n")
+
+
+def landing_files_for_day(cfg, date, day):
+    """Tra ve list (duong dan tuong doi, dinh dang, cot, dong raw) cua mot ngay."""
+    files = []
+    for channel, fmt in cfg["channels"].items():
+        rows = sorted((r for r in day["orders"] if r.channel == channel), key=order_sort_key)
+        columns = list(ORDER_COLUMNS)
+        if any("promo_code" in r.values for r in rows):
+            columns.append("promo_code")
+        rel = Path(date) / "orders" / order_file_name(channel, date, fmt)
+        files.append((rel, fmt, columns, [r.to_raw(columns) for r in rows]))
+    for entity in ["order_items", "customers", "products"]:
+        columns = ENTITY_COLUMNS[entity]
+        rel = Path(date) / entity_file_name(entity, date)
+        files.append((rel, "csv", columns, [r.to_raw(columns) for r in day[entity]]))
+    return files
+
+
+def write_landing(cfg, dataset, landing_dir):
+    """Ghi toan bo tep landing; tra ve list duong dan da ghi."""
+    landing_dir = Path(landing_dir)
+    written = []
+    for date in cfg["dates"]:
+        for rel, fmt, columns, raw_rows in landing_files_for_day(cfg, date, dataset[date]):
+            path = landing_dir / rel
+            if fmt == "json":
+                write_jsonl(path, columns, raw_rows)
+            else:
+                write_csv(path, columns, raw_rows)
+            written.append(path)
+    return written
+
+
+def parse_args(argv=None):
+    """Doc tham so dong lenh."""
+    parser = argparse.ArgumentParser(description="Sinh du lieu landing va answer key")
+    parser.add_argument("--output-dir", default=None,
+                        help="thu muc goc de ghi landing/ va answer_key/ (mac dinh theo config)")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    """Sinh du lieu va ghi ra dia."""
+    args = parse_args(argv)
     cfg = load_config()
+    if args.output_dir:
+        landing_dir = Path(args.output_dir) / "landing"
+    else:
+        landing_dir = resolve_path(cfg, "landing")
     dataset = build_dataset(cfg)
-    for date, day in dataset.items():
-        print(date, {entity: len(rows) for entity, rows in day.items()})
+    written = write_landing(cfg, dataset, landing_dir)
+    print(f"Da ghi {len(written)} tep vao {landing_dir}")
 
 
 if __name__ == "__main__":
