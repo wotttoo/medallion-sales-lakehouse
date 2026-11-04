@@ -6,7 +6,11 @@ Check sau layer:
 - gold:   revenue_reconciliation, no_orphan_keys
 """
 
+from pyspark.sql import functions as F
+
 from common.run_log import read_ingested_files
+from gold_build import read_gold
+from silver_transform import read_silver
 
 
 class QualityCheckError(Exception):
@@ -81,3 +85,38 @@ def check_volume(spark, cfg, processing_date):
     """volume_check cho ngay xu ly, doc so dong tu ingested_files."""
     return check_volume_counts(processing_date, daily_order_counts(spark, cfg),
                                cfg["volume_drop_threshold"])
+
+
+# ---------------------------------------------------------------------------
+# revenue_reconciliation
+# ---------------------------------------------------------------------------
+def silver_revenue_by_date(spark, cfg):
+    """Doanh thu theo order_date tinh truc tiep tu Silver (khong qua Gold)."""
+    orders = read_silver(spark, cfg, "orders").where(F.col("status") != "cancelled")
+    rows = (read_silver(spark, cfg, "order_items").join(orders.select("order_id", "order_date"), "order_id")
+            .groupBy("order_date").agg(F.sum("line_amount").alias("revenue")).collect())
+    return {r["order_date"]: int(r["revenue"]) for r in rows}
+
+
+def gold_revenue_by_date(spark, cfg, table):
+    """Tong revenue theo order_date cua mot bang KPI Gold."""
+    rows = (read_gold(spark, cfg, table).groupBy("order_date")
+            .agg(F.sum("revenue").alias("revenue")).collect())
+    return {r["order_date"]: int(r["revenue"]) for r in rows}
+
+
+def check_revenue_reconciliation(spark, cfg):
+    """Doanh thu Gold theo ngay (ca hai bang KPI) = doanh thu tinh tu Silver."""
+    # BEGIN SOLUTION
+    expected = silver_revenue_by_date(spark, cfg)
+    broken = {}
+    for table in ("daily_revenue_by_category", "daily_revenue_by_channel"):
+        got = gold_revenue_by_date(spark, cfg, table)
+        diff = {d.isoformat(): (got.get(d), expected.get(d))
+                for d in set(got) | set(expected) if got.get(d) != expected.get(d)}
+        if diff:
+            broken[table] = diff
+    # END SOLUTION
+    if broken:
+        raise QualityCheckError(f"revenue_reconciliation that bai (gold, silver): {broken}")
+    return {"revenue_reconciliation": {d.isoformat(): v for d, v in sorted(expected.items())}}

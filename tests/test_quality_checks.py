@@ -73,3 +73,56 @@ def test_volume_reads_ingested_files(spark, tmp_path):
     assert qc.daily_order_counts(spark, cfg) == {"2026-10-19": 200, "2026-10-20": 60}
     with pytest.raises(qc.QualityCheckError):
         qc.check_volume(spark, cfg, "2026-10-20")
+
+
+# ---------------------------------------------------------------- T51 reconciliation
+@pytest.fixture()
+def small_lakehouse(spark, tmp_path):
+    """Silver nho viet tay + Gold dung tu do (2 ngay, co don huy)."""
+    import datetime as dt
+    import gold_build as gb
+    import silver_transform as st
+    from common.config import load_config
+    from common.paths import table_uri
+    cfg = load_config(lakehouse_dir=tmp_path / "lh")
+    t = dt.datetime(2026, 10, 19, 12)
+    meta = (t, "f.csv", "b-0001")
+    d1, d2 = dt.date(2026, 10, 19), dt.date(2026, 10, 20)
+    tables = {
+        "products": [("P-1", "Sach", "Books", 10), ("P-2", "Son", "Beauty", 20)],
+        "customers": [("C-1", "A", "a@x.com", None, "Hue"), ("C-2", "B", "b@x.com", "09", "Hue")],
+        "orders": [("O1", "C-1", d1, 30, "delivered", "web", t, None),
+                   ("O2", "C-2", d1, 20, "cancelled", "app", t, None),
+                   ("O3", "C-2", d2, 10, "pending", "partner", t, "SALE10")],
+        "order_items": [("O1", "P-1", 1, 10, 10), ("O1", "P-2", 1, 20, 20),
+                        ("O2", "P-2", 1, 20, 20), ("O3", "P-1", 1, 10, 10)],
+    }
+    types = {"products": "string, string, string, bigint",
+             "customers": "string, string, string, string, string",
+             "orders": "string, string, date, bigint, string, string, timestamp, string",
+             "order_items": "string, string, int, bigint, bigint"}
+    for entity, rows in tables.items():
+        cols = st.silver_columns(entity)
+        schema = ", ".join(f"{c} {ty}" for c, ty in zip(
+            cols, types[entity].split(", ") + ["timestamp", "string", "string"]))
+        spark.createDataFrame([r + meta for r in rows], schema) \
+            .write.format("delta").save(table_uri(f"silver.{entity}", cfg))
+    gb.build_gold(spark, cfg, dates=gb.all_order_dates(spark, cfg))
+    return cfg
+
+
+def test_reconciliation_ok(spark, small_lakehouse):
+    """Gold vua dung tu Silver thi khop; don huy khong tinh."""
+    out = qc.check_revenue_reconciliation(spark, small_lakehouse)
+    assert out == {"revenue_reconciliation": {"2026-10-19": 30, "2026-10-20": 10}}
+
+
+def test_reconciliation_detects_mismatch(spark, small_lakehouse):
+    """Sua tay bang KPI cho lech -> fail, neu ro bang va ngay."""
+    import gold_build as gb
+    path = gb.gold_path(small_lakehouse, "daily_revenue_by_channel")
+    bad = gb.read_gold(spark, small_lakehouse, "daily_revenue_by_channel") \
+        .withColumn("revenue", gb.F.col("revenue") + 1)
+    bad.write.format("delta").mode("overwrite").save(path)
+    with pytest.raises(qc.QualityCheckError, match="daily_revenue_by_channel.*2026-10-19"):
+        qc.check_revenue_reconciliation(spark, small_lakehouse)

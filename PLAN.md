@@ -295,7 +295,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k volume` pass.
 
-- [ ] **T51. Check revenue_reconciliation**
+- [x] **T51. Check revenue_reconciliation**
   - Việc: so doanh thu Gold theo ngày với doanh thu tính trực tiếp từ Silver. Cần T44.
   - File: `quality_checks.py`, `tests/test_quality_checks.py`
   - Xong khi: `pytest tests/test_quality_checks.py -k reconciliation` pass.
