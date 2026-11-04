@@ -312,7 +312,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
 
 ## M6. Thí nghiệm, test tổng và số liệu
 
-- [ ] **T54. Test tổng theo answer key**
+- [x] **T54. Test tổng theo answer key**
   - Việc: chạy cả 3 ngày với v1 và v2 trên lakehouse tạm; so doanh thu 2 chiều; kiểm đơn T2 làm đổi đúng ngày cũ; kiểm giá trị SPEC mục 9.
   - File: `tests/test_against_answer_key.py`
   - Xong khi: `pytest tests/test_against_answer_key.py` pass.
