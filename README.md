@@ -104,3 +104,80 @@ python run_pipeline.py --rebuild --rules-version v2             # dung lai Silve
 ```
 
 Kết quả nằm trong `lakehouse/` (bảng Delta path-based: `bronze/`, `silver/`, `quarantine/`, `gold/`, `_meta/`).
+
+Mỗi layer chạy xong sẽ chạy các kiểm tra mức tập dữ liệu (`quality_checks.py`) và ghi một dòng vào `lakehouse/_meta/run_log`.
+Nếu kiểm tra fail, lần chạy ghi `status = failed`, các layer sau không chạy, và lệnh trả exit code 1.
+
+| Layer | Kiểm tra |
+|---|---|
+| bronze | `volume_check` |
+| silver | `record_conservation`, `quarantine_rate` |
+| gold | `revenue_reconciliation`, `no_orphan_keys` |
+
+## 5. Ba thí nghiệm reproducibility
+
+Mỗi script tự sinh dữ liệu và chạy pipeline trong một thư mục tạm riêng, in bảng kết quả rồi `assert` (thêm `--keep` để giữ thư mục tạm):
+
+```bash
+python experiments/exp1_idempotency.py   # chay 2026-10-19 hai lan: khong doi gi, lan 2 bo qua moi tep
+python experiments/exp2_rule_change.py   # v1 roi --rebuild v2: cach ly giam, doanh thu tang dung answer key
+python experiments/exp3_time_travel.py   # DESCRIBE HISTORY, versionAsOf, ghi lo sai roi RESTORE
+```
+
+`python tools/export_reading_numbers.py` chạy lại tất cả và ghi các con số thật vào `reading_numbers.md`.
+
+## 6. Bản cho học viên và dữ liệu đóng gói
+
+```bash
+python tools/make_student_version.py   # tao student/: moi khoi BEGIN/END SOLUTION -> TODO + NotImplementedError
+python tools/package_data.py           # nen landing/ thanh data_landing.zip
+```
+
+Trong `student/`, các phần cốt lõi đã được thay bằng `# TODO` kèm gợi ý: chuẩn hóa (v2), điều kiện quy tắc, áp quy tắc,
+loại trùng, MERGE, tìm ngày bị ảnh hưởng, cách ghi Gold (`replaceWhere`) và các kiểm tra đối soát.
+`data_landing.zip` chứa đúng bộ dữ liệu mà `python generate_data.py` sinh ra (seed 42), giải nén ra `landing/`.
+
+## 7. Cách tự chấm
+
+1. Sinh dữ liệu và đáp án (hoặc giải nén `data_landing.zip`, nhưng vẫn cần chạy `generate_data.py` để có `answer_key/`):
+
+   ```bash
+   python generate_data.py
+   ```
+
+2. Chạy pipeline trên lakehouse sạch và kiểm tra exit code bằng 0:
+
+   ```bash
+   python run_pipeline.py --all-dates
+   ```
+
+   Xem các dòng `[silver] lo b-000N ...` và `[gold] check revenue_reconciliation ...` in ra.
+   Đối chiếu với `answer_key/answer_key.json`:
+   - `days.<ngay>.outcomes.v2.entities`: số hợp lệ / cách ly / trùng bị loại của từng thực thể;
+   - `days.<ngay>.outcomes.v2.revenue_by_date`: doanh thu theo `order_date` sau khi xử lý xong ngày đó;
+   - `rule_change`: số cách ly giảm và doanh thu tăng khi đổi từ v1 sang v2.
+
+3. Chạy bộ test. Bộ test tự sinh dữ liệu và chạy pipeline trên thư mục tạm, nên không đụng `lakehouse/` của bạn.
+   Giá trị mong đợi lấy từ answer key, không tính lại bằng pipeline.
+
+   ```bash
+   pytest tests/ -v                               # toan bo (khoang 25 phut)
+   pytest tests/test_silver.py -k normalize -v    # tung phan khi dang lam TODO
+   pytest tests/test_against_answer_key.py -v     # test tong: 3 ngay, ca v1 va v2
+   ```
+
+4. Chạy ba thí nghiệm ở mục 5: cả ba đều phải in `PASS`.
+
+Answer key được tính trực tiếp từ dữ liệu sạch và danh sách lỗi đã cài trong `generate_data.py`
+(lớp `ExpectedLakehouse`), không chạy lại pipeline. Nhờ vậy, khi test pass, pipeline của bạn đã ra cùng kết quả với một
+cách tính độc lập.
+
+## 8. Hướng mở rộng
+
+- **Surrogate key**: bài này dùng khóa tự nhiên (`order_id`, `customer_id`, `product_id`) cho đơn giản. Trong kho dữ liệu
+  thật, dim thường có khóa thay thế (ví dụ `customer_sk` sinh tăng dần hoặc bằng hash), fact tham chiếu tới khóa này.
+  Cách này tách khỏi thay đổi khóa của hệ nguồn và hỗ trợ lưu lịch sử.
+- **SCD type 2**: `gold.dim_customer` hiện ghi đè toàn bảng, nên khi khách đổi `city` thì giá trị cũ mất.
+  Với SCD type 2, mỗi lần thay đổi sẽ thêm một dòng mới với `valid_from`, `valid_to`, `is_current`
+  (dùng `MERGE` của Delta để đóng dòng cũ và chèn dòng mới). Fact khi đó gắn với phiên bản dim đúng tại thời điểm phát sinh đơn.
+- Ngoài phạm vi bài: streaming / Auto Loader, Unity Catalog, Lakeflow/DLT.

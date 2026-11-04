@@ -354,7 +354,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `tools/package_data.py`, `data_landing.zip`
   - Xong khi: `python tools/package_data.py && python -m zipfile -l data_landing.zip` liệt kê đủ tệp 3 ngày.
 
-- [ ] **T62. README phần tự chấm** (P6)
+- [x] **T62. README phần tự chấm** (P6)
   - Việc: thêm "Cách tự chấm": chạy pipeline, chạy `pytest`, so answer key; nêu hướng mở rộng surrogate key, SCD type 2.
   - File: `README.md`
   - Xong khi: `grep -c "Cách tự chấm" README.md` ra ít nhất 1.
