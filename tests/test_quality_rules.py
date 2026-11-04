@@ -17,13 +17,13 @@ REQUIRED = {
 
 def test_required_rules_exact():
     """Du 9 quy tac bat buoc, dung ten, thuc the va action."""
-    got = {r["name"]: (r["entity"], r["action"]) for r in qr.RULES}
+    got = {r["name"]: (r["entity"], r["action"]) for r in qr.all_rules()}
     assert got == REQUIRED
 
 
 def test_rules_are_data():
     """Moi quy tac la dict co du truong, condition la chuoi bieu thuc."""
-    for r in qr.RULES:
+    for r in qr.all_rules():
         assert set(r) == {"name", "entity", "condition", "action", "stage"}
         assert isinstance(r["condition"], str) and r["condition"].strip()
         assert r["action"] in ("warn", "drop")
@@ -51,5 +51,5 @@ def test_conditions_evaluate_in_spark(spark):
         "customer_id string, order_date string, total_amount long, status string, "
         "quantity int, _product_exists boolean, _order_exists boolean, phone string, "
         "_items_total long")
-    row = df.select([F.expr(r["condition"]).alias(r["name"]) for r in qr.RULES]).collect()[0]
-    assert all(row[r["name"]] is True for r in qr.RULES)
+    row = df.select([F.expr(r["condition"]).alias(r["name"]) for r in qr.all_rules()]).collect()[0]
+    assert all(row[r["name"]] is True for r in qr.all_rules())

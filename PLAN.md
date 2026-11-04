@@ -339,7 +339,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
 
 ## M7. Bản cho học viên và đóng gói
 
-- [ ] **T59. Thêm marker solution** (P6)
+- [x] **T59. Thêm marker solution** (P6)
   - Việc: bao các phần cốt lõi bằng `# BEGIN SOLUTION` / `# END SOLUTION`: chuẩn hóa, điều kiện quy tắc, loại trùng, MERGE, cách ghi Gold, đối soát.
   - File: `quality_rules.py`, `silver_transform.py`, `gold_build.py`, `quality_checks.py`
   - Xong khi: `grep -c "BEGIN SOLUTION" silver_transform.py gold_build.py quality_rules.py quality_checks.py` mỗi file ra ít nhất 1 và `pytest tests/` vẫn pass.
