@@ -99,7 +99,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_c` pass.
 
-- [ ] **T13. Cài lỗi nhóm W**
+- [x] **T13. Cài lỗi nhóm W**
   - Việc: cài W1, W2 (lệch dưới 5%). Tách W2 khỏi các đơn bị lệch tổng tiền do C2/C3.
   - File: `generate_data.py`, `tests/test_generate_data.py`
   - Xong khi: `pytest tests/test_generate_data.py -k group_w` pass.

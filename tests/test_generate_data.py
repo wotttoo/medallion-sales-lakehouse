@@ -290,3 +290,47 @@ def test_group_c_item_keys_unique(cfg, dataset):
     for date in cfg["dates"]:
         keys = [(r.values["order_id"], r.values["product_id"]) for r in dataset[date]["order_items"]]
         assert len(keys) == len(set(keys))
+
+
+# ---------------------------------------------------------------- T13 nhom W
+def test_group_w_w1_missing_phone(cfg, dataset):
+    """W1: khoang 5% khach thieu phone; dong ghi ra co phone rong."""
+    first = cfg["dates"][0]
+    rows = error_rows(dataset, first, "customers", "W1_missing_phone")
+    ids = {r.values["customer_id"] for r in rows}
+    assert len(ids) == expected_count(cfg, "W1_missing_phone", cfg["volume"]["n_customers"])
+    for date in cfg["dates"]:
+        for r in error_rows(dataset, date, "customers", "W1_missing_phone"):
+            assert r.to_raw(gd.CUSTOMER_COLUMNS)["phone"] == ""
+        for r in dataset[date]["customers"]:
+            if "W1_missing_phone" not in r.errors:
+                assert r.values["phone"]
+
+
+def test_group_w_w2_small_mismatch(cfg, dataset):
+    """W2: lech duoi 5% va khong trung voi don co dong C2/C3."""
+    n = cfg["volume"]["orders_per_day"]
+    for date in cfg["dates"]:
+        items_by_order = {}
+        for i in dataset[date]["order_items"]:
+            items_by_order.setdefault(i.values["order_id"], []).append(i)
+        rows = error_rows(dataset, date, "orders", "W2_amount_mismatch")
+        assert len(rows) == expected_count(cfg, "W2_amount_mismatch", n)
+        for r in rows:
+            items = items_by_order[r.values["order_id"]]
+            assert not any(i.errors for i in items)
+            items_total = sum(i.values["quantity"] * i.values["unit_price"] for i in items)
+            diff = abs(r.values["total_amount"] - items_total)
+            assert 0 < diff < 0.05 * items_total
+
+
+def test_group_w_other_orders_match_items(cfg, dataset):
+    """Don khong dinh W2 thi total_amount = tong cac dong sach."""
+    for date in cfg["dates"]:
+        clean_total = {}
+        for i in dataset[date]["order_items"]:
+            c = i.clean
+            clean_total[c["order_id"]] = clean_total.get(c["order_id"], 0) + c["quantity"] * c["unit_price"]
+        for r in dataset[date]["orders"]:
+            if "W2_amount_mismatch" not in r.errors:
+                assert r.values["total_amount"] == clean_total[r.values["order_id"]]

@@ -492,6 +492,52 @@ def inject_group_c(cfg, date, day):
 
 
 # ---------------------------------------------------------------------------
+# Nhom W: chi canh bao
+# ---------------------------------------------------------------------------
+def inject_w1(cfg, dataset):
+    """W1: khach thieu phone. Chon trong khach moi cua tung ngay; moi dong cua
+    khach do (ke ca dong trung A4, dong cap nhat ngay sau) deu thieu phone."""
+    rate = cfg["error_rates"]["W1_missing_phone"]
+    missing = set()
+    seen = set()
+    for date in cfg["dates"]:
+        rng = make_rng(cfg["seed"], f"group_w1:{date}")
+        rows = dataset[date]["customers"]
+        new_ids = sorted({r.values["customer_id"] for r in rows} - seen)
+        seen |= set(new_ids)
+        missing |= set(pick_rows(rng, new_ids, count_for(rate, len(new_ids))))
+        for r in rows:
+            if r.values["customer_id"] in missing:
+                r.values["phone"] = None
+                r.add_error("W1_missing_phone")
+
+
+def deviate_amount(rng, total, max_deviation):
+    """Lech total mot it (boi so 1000, khac 0, duoi max_deviation)."""
+    pct = rng.uniform(0.01, max_deviation * 0.9) * rng.choice([-1, 1])
+    delta = int(round(total * pct / 1000.0)) * 1000
+    if delta == 0 or abs(delta) / total >= max_deviation:
+        delta = 1000 if pct > 0 else -1000
+    return total + delta
+
+
+def inject_w2(cfg, date, day):
+    """W2: total_amount lech nho so voi tong cac dong. Khong chon don da bi
+    lech do C2/C3 (dong bi cach ly), de hai nguon lech khong chong nhau."""
+    rates = cfg["error_rates"]
+    rng = make_rng(cfg["seed"], f"group_w2:{date}")
+    bad_item_orders = {r.values["order_id"] for r in day["order_items"]
+                       if {"C2_quantity_non_positive", "C3_unknown_product"} & set(r.errors)}
+    pool = [r for r in random_error_pool(day["orders"])
+            if r.values["order_id"] not in bad_item_orders]
+    code = "W2_amount_mismatch"
+    for r in pick_rows(rng, pool, count_for(rates[code], n_new_orders(day))):
+        r.values["total_amount"] = deviate_amount(rng, r.values["total_amount"],
+                                                  rates["W2_max_deviation"])
+        r.add_error(code)
+
+
+# ---------------------------------------------------------------------------
 # Lap bo du lieu (dong landing + loi) cho moi ngay
 # ---------------------------------------------------------------------------
 def build_dataset(cfg):
@@ -525,6 +571,8 @@ def build_dataset(cfg):
         inject_group_a(cfg, date, dataset[date])
         inject_group_b(cfg, date, dataset[date])
         inject_group_c(cfg, date, dataset[date])
+        inject_w2(cfg, date, dataset[date])
+    inject_w1(cfg, dataset)
     return dataset
 
 
