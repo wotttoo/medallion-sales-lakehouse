@@ -1,0 +1,14 @@
+# moi truong va cache
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+spark-warehouse
+metastore_db
+derby.log
+
+# du lieu sinh ra khi chay (khong commit)
+/landing
+/answer_key
+/lakehouse
+/student

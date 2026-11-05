@@ -1,0 +1,60 @@
+# Tham so chung cho pipeline Medallion (xem SPEC.md muc 5)
+seed: 42
+dates: ["2026-10-19", "2026-10-20", "2026-10-21"]
+
+volume:
+  orders_per_day: 1500
+  items_per_order: [1, 4]
+  n_customers: 200             # so khach trong full snapshot ngay 1
+  n_products: 50
+  new_customers_per_day: 10    # cac ngay sau: khach moi
+  updated_customers_per_day: 5 # cac ngay sau: khach doi thong tin (city)
+  updated_products_per_day: 2  # cac ngay sau: san pham doi gia
+  quantity_range: [1, 5]
+  categories: ["Electronics", "Fashion", "Home", "Beauty", "Sports", "Books"]
+
+channels:
+  web: csv
+  app: csv
+  partner: json
+
+# ty trong don hang moi theo kenh
+channel_weights:
+  web: 0.45
+  app: 0.35
+  partner: 0.20
+
+# phan bo trang thai cua don sach
+status_weights:
+  pending: 0.30
+  shipping: 0.25
+  delivered: 0.35
+  cancelled: 0.10
+
+# ty le loi cai san (SPEC.md muc 6.3)
+error_rates:
+  A1_date_ddmmyyyy: 0.03        # ty le tren don moi trong ngay
+  A1_partner_share: 0.80        # phan lon A1 nam o kenh partner
+  A2_amount_vnd_string: 0.02
+  A3_status_case: 0.10
+  A4_email_case: 0.05           # ty le tren khach trong tep customers
+  B1_dup_cross_channel: 0.02
+  B2_dup_same_updated_at_pairs: 5   # dung 5 cap moi ngay
+  C1_missing_customer_id: 0.01
+  C2_quantity_non_positive: 0.01  # ty le tren dong order_items
+  C3_unknown_product: 0.01
+  W1_missing_phone: 0.05
+  W2_amount_mismatch: 0.02
+  W2_max_deviation: 0.05        # lech nho hon 5%
+  T1_status_update_resend: 0.10  # ty le don ngay N gui lai o ngay N+1
+  T2_late_arriving: 0.03         # ty le don ngay N+1 co order_date = N
+
+rules_version: v2            # v1 hoac v2, xem SPEC muc 7.3
+quarantine_rate_threshold: 0.10
+volume_drop_threshold: 0.5   # fail neu so don < 50% trung binh cac ngay truoc
+enable_schema_evolution_day3: true
+
+paths:
+  landing: landing
+  lakehouse: lakehouse
+  answer_key: answer_key/answer_key.json
