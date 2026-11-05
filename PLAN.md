@@ -359,7 +359,7 @@ Toàn bộ M2 sửa chung `generate_data.py` và các lỗi tương tác nhau, n
   - File: `README.md`
   - Xong khi: `grep -c "Cách tự chấm" README.md` ra ít nhất 1.
 
-- [ ] **T63. Kiểm tra cuối**
+- [x] **T63. Kiểm tra cuối**
   - Việc: chạy lại từ đầu trên bản clone sạch, đối chiếu từng mục ở "Định nghĩa hoàn thành".
   - File: không có file mới
   - Xong khi: `git clone . "$(mktemp -d)/final"`, cài theo `CLAUDE.md` trong bản clone, rồi `python generate_data.py && python run_pipeline.py --all-dates && pytest tests/ -v` đều pass.

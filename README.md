@@ -161,7 +161,7 @@ loại trùng, MERGE, tìm ngày bị ảnh hưởng, cách ghi Gold (`replaceWh
    Giá trị mong đợi lấy từ answer key, không tính lại bằng pipeline.
 
    ```bash
-   pytest tests/ -v                               # toan bo (khoang 25 phut)
+   pytest tests/ -v                               # toan bo (khoang 15 phut)
    pytest tests/test_silver.py -k normalize -v    # tung phan khi dang lam TODO
    pytest tests/test_against_answer_key.py -v     # test tong: 3 ngay, ca v1 va v2
    ```
